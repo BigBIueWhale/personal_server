@@ -76,4 +76,4 @@ These are the steps to get **NVIDIA RTX 5090** working with CUDA on **Ubuntu 24.
 https://erwansistandi.medium.com/install-docker-in-ubuntu-server-24-04-lts-bcfef5025c1a
 
 ## 6. Install RustDesk
-https://chatgpt.com/share/68ae1225-dc54-800a-9175-fac02d1c258b
+Just the GUI client, and turn on direct access. No docker image, just the GUI which is a server by default.
