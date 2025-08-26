@@ -90,3 +90,9 @@ To fix this:
    `drm_kms_helper.edid_firmware=HDMI-A-1:edid/edid.bin video=HDMI-A-1:e`
    (replace `HDMI-A-1` with your actual connector), then update GRUB and reboot.
    This makes a “monitor” always present, so RustDesk/TeamViewer won’t go black.
+
+## 8. Install Openssh server
+
+`sudo apt install openssh-server`
+
+Then turn on SSH connection from Ubuntu settings GUI app.
