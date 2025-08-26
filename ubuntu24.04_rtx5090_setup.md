@@ -77,3 +77,31 @@ https://erwansistandi.medium.com/install-docker-in-ubuntu-server-24-04-lts-bcfef
 
 ## 6. Install RustDesk
 Just the GUI client, and turn on direct access. No docker image, just the GUI which is a server by default.
+
+## 7. Switch the host to **Xorg** and (optionally) add a virtual display
+
+By default both RustDesk and TeamViewer show black screen when the physical display is off in Wayland.
+
+Xorg is more forgiving for unattended remote control.
+
+**A. Force Xorg (system-wide):**
+Edit `/etc/gdm3/custom.conf` → set `WaylandEnable=false`, then reboot. Multiple reports use exactly this for TV/AnyDesk/RustDesk on 24.04.x. ([LinuxConfig][14], [Ask Ubuntu][15])
+
+**B. Add a software “dummy” display (if you want true headless):**
+Install the Xorg dummy driver and define a virtual screen so remote apps always have something to capture (no physical monitor required). Community how-tos: ([Gist][16], [Phung Xuan Anh][17], [Unix & Linux Stack Exchange][18])
+
+```bash
+sudo apt update
+sudo apt install xserver-xorg-video-dummy
+# create a minimal /etc/X11/xorg.conf.d/20-headless.conf
+# (use modeline/resolution from the linked guides)
+```
+
+* **NVIDIA?** You can let Xorg start with no display using:
+
+  ```bash
+  sudo nvidia-xconfig --use-display-device=none --allow-empty-initial-configuration
+  ```
+
+  (This keeps an X screen alive headlessly.) ([NVIDIA Developer Forums][19])
+* **AMD?** There’s also `amdgpu.virtual_display=…` to create a virtual monitor at boot (advanced; kernel parameter). ([Arch Linux Forums][20])
