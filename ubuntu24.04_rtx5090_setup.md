@@ -82,12 +82,7 @@ Just the GUI client, and turn on direct access. No docker image, just the GUI wh
 
 By default both RustDesk and TeamViewer show black screen when the physical display is off in Wayland.
 
-Xorg is more forgiving for unattended remote control.
-
-https://chatgpt.com/share/68ae2ed9-e6dc-800a-b513-87614b937dc6
-
-## 8. Switch GPU to Intel GPU
-
-To avoid using VRAM of the Nvidia GPU, run the system on the Intel GPU (scroll down in chat)
-
-https://chatgpt.com/s/t_68ae308bce0881918476ff823cdf9f1c
+To fix this, run the command:
+```sh
+gsettings set org.gnome.desktop.remote-desktop.rdp screen-share-mode 'extend'
+```
