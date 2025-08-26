@@ -60,9 +60,8 @@ These are the steps to get **NVIDIA RTX 5090** working with CUDA on **Ubuntu 24.
 1. Install and build sample programs:
    ```bash
    sudo apt install -y nvidia-cuda-samples
-   cp -r /usr/share/doc/nvidia-cuda-toolkit/examples/Samples/1_Utilities/deviceQuery ~/cuda_example
-   cd ~/cuda_example
-   make
+   cd /usr/share/doc/nvidia-cuda-toolkit/examples/Samples/1_Utilities/deviceQuery
+   make SMS=90
    ~/cuda_example/deviceQuery
    ```
 
