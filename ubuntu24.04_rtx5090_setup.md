@@ -70,3 +70,39 @@ These are the steps to get **NVIDIA RTX 5090** working with CUDA on **Ubuntu 24.
 ---
 
 ✅ At this point, the RTX 5090 works correctly on Ubuntu 24.04 LTS with CUDA 13.0 support.
+
+## 5. Install Docker
+
+https://erwansistandi.medium.com/install-docker-in-ubuntu-server-24-04-lts-bcfef5025c1a
+
+## 6. Install RustDesk
+```sh
+user@rtx5090:~/Desktop/cuda$ wget rustdesk.com/oss.yml -O compose.yml
+--2025-08-26 22:52:47--  http://rustdesk.com/oss.yml
+Resolving rustdesk.com (rustdesk.com)... 2001:19f0:4400:6ac5:5400:1ff:fe99:cb38, 45.76.181.120
+Connecting to rustdesk.com (rustdesk.com)|2001:19f0:4400:6ac5:5400:1ff:fe99:cb38|:80... connected.
+HTTP request sent, awaiting response... 301 Moved Permanently
+Location: https://rustdesk.com/oss.yml [following]
+--2025-08-26 22:52:47--  https://rustdesk.com/oss.yml
+Connecting to rustdesk.com (rustdesk.com)|2001:19f0:4400:6ac5:5400:1ff:fe99:cb38|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 402 [application/octet-stream]
+Saving to: ‘compose.yml’
+
+compose.yml                                   100%[=================================================================================================>]     402  --.-KB/s    in 0s      
+
+2025-08-26 22:52:48 (389 MB/s) - ‘compose.yml’ saved [402/402]
+
+user@rtx5090:~/Desktop/cuda$ sudo docker compose up -d
+[sudo] password for user: 
+[+] Running 5/5
+ ✔ hbbs Pulled                                                                                                                                                                     4.9s 
+   ✔ 9e455e83a929 Pull complete                                                                                                                                                    1.2s 
+   ✔ cf1dc9594c7d Pull complete                                                                                                                                                    1.2s 
+   ✔ 4f3b5a2b0508 Pull complete                                                                                                                                                    1.3s 
+ ✔ hbbr Pulled                                                                                                                                                                     5.1s 
+[+] Running 2/2
+ ✔ Container hbbr  Started                                                                                                                                                         0.3s 
+ ✔ Container hbbs  Started                                                                                                                                                         0.3s 
+user@rtx5090:~/Desktop/cuda$ 
+```
