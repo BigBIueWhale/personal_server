@@ -80,9 +80,13 @@ Just the GUI client, and turn on direct access. No docker image, just the GUI wh
 
 ## 7. Switch the host to **Xorg** and (optionally) add a virtual display
 
-By default both RustDesk and TeamViewer show black screen when the physical display is off in Wayland.
+By default both RustDesk and TeamViewer show black screen when the physical display is off in Wayland.\
+To fix this:
 
-To fix this, run the command:
-```sh
-gsettings set org.gnome.desktop.remote-desktop.rdp screen-share-mode 'extend'
-```
+**Software-only: force a virtual display (EDID)**
+
+* Save or generate an EDID, place it at `/lib/firmware/edid/edid.bin`
+* Add kernel params like:
+   `drm_kms_helper.edid_firmware=HDMI-A-1:edid/edid.bin video=HDMI-A-1:e`
+   (replace `HDMI-A-1` with your actual connector), then update GRUB and reboot.
+   This makes a “monitor” always present, so RustDesk/TeamViewer won’t go black.
