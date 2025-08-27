@@ -119,3 +119,12 @@ user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$ ./install_ollama_user_s
 Aug 27 22:09:41 rtx5090 systemd[1816]: Started ollama.service - Ollama (user) – local LLM server.
 user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$
 ```
+
+```sh
+user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$ OLLAMA_HOST=172.17.0.1:11434 ./ollama list
+NAME            ID              SIZE     MODIFIED     
+gemma3:27b      a418f5838eaf    17 GB    19 hours ago    
+gpt-oss:120b    f7f8e2f8f4e0    65 GB    24 hours ago    
+qwen3:32b       030ee887880f    20 GB    24 hours ago    
+user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$
+```
