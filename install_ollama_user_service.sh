@@ -21,15 +21,30 @@ ln -sfn "$BIN" "$DEST_DIR/ollama"
 mkdir -p "$HOME/.local/bin"
 ln -sfn "$DEST_DIR/ollama" "$HOME/.local/bin/ollama"
 
-# Persisted, user-editable environment (won't be overwritten on future runs)
+# Environment pushed by this installer (OVERWRITTEN on every run).
 CFG_DIR="$HOME/.config/ollama"
 ENV_FILE="$CFG_DIR/env"
 mkdir -p "$CFG_DIR"
-if [[ ! -f "$ENV_FILE" ]]; then
-  cat >"$ENV_FILE" <<'EOF'
+
+# Detect the Docker bridge gateway IP (containers can reach this; not public). Keep it simple.
+detect_bridge_ip() {
+  local ip=""
+  if command -v ip >/dev/null 2>&1; then
+    ip="$(ip -4 addr show docker0 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 || true)"
+  fi
+  if [[ -z "$ip" ]]; then
+    ip="172.17.0.1"   # sensible default on most Docker installs
+  fi
+  printf '%s' "$ip"
+}
+
+BRIDGE_IP="$(detect_bridge_ip)"
+
+# Write a fresh env file every time (authoritative config).
+cat >"$ENV_FILE" <<EOF
 # Environment for the user ollama.service
 # Bind address for the API (localhost by default). Change to 0.0.0.0:11434 to expose on LAN.
-OLLAMA_HOST=127.0.0.1:11434
+OLLAMA_HOST=${BRIDGE_IP}:11434
 
 # How long to keep models loaded (-1=forever, 0=unload immediately, or durations like 30m, 12h).
 # Leave commented to use server default (currently ~5m).
@@ -40,9 +55,8 @@ OLLAMA_HOST=127.0.0.1:11434
 # OLLAMA_MAX_QUEUE=512
 # OLLAMA_NUM_PARALLEL=1
 # OLLAMA_ORIGINS=*
-# OLLAMA_MODELS=$HOME/.ollama
+# OLLAMA_MODELS=\$HOME/.ollama
 EOF
-fi
 
 # systemd --user unit
 UNIT_DIR="$HOME/.config/systemd/user"
@@ -72,8 +86,8 @@ systemctl --user enable ollama.service
 systemctl --user restart ollama.service
 
 echo
-echo "✔ Installed user service pointing at: $BIN"
-echo "• Edit env here: $ENV_FILE (then: systemctl --user restart ollama)"
+echo "✔ Installed/updated user service pointing at: $BIN"
+echo "• Pushed env to: $ENV_FILE (OLLAMA_HOST set to ${BRIDGE_IP}:11434)"
 echo "• Manage with:   systemctl --user status|restart|stop ollama"
 echo
 systemctl --user --no-pager --full status ollama.service || true
