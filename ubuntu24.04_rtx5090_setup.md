@@ -94,3 +94,7 @@ Then turn on SSH connection from Ubuntu settings GUI app.
 ```sh
 sudo docker run -d -p 127.0.0.1:3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:v0.6.25
 ```
+
+## 10. Install Ollama
+
+[install_ollama_user_service.sh](./install_ollama_user_service.sh)
