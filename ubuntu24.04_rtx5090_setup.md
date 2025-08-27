@@ -128,3 +128,8 @@ gpt-oss:120b    f7f8e2f8f4e0    65 GB    24 hours ago
 qwen3:32b       030ee887880f    20 GB    24 hours ago    
 user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$
 ```
+
+## 11. Free VRAM
+
+Rustdesk tends to steal VRAM. [./no_gpu.sh](./no_gpu.sh) is a script that patches the desktop file of `rustdesk` to make it run only on the Intel GPU.\
+[no_gpu_undo.sh](./no_gpu_undo.sh) is the cleanup to revert this change.
