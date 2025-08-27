@@ -81,18 +81,16 @@ Just the GUI client, and turn on direct access. No docker image, just the GUI wh
 ## 7. Switch the host to **Xorg** and (optionally) add a virtual display
 
 By default both RustDesk and TeamViewer show black screen when the physical display is off in Wayland.\
-To fix this:
-
-**Software-only: force a virtual display (EDID)**
-
-* Save or generate an EDID, place it at `/lib/firmware/edid/edid.bin`
-* Add kernel params like:
-   `drm_kms_helper.edid_firmware=HDMI-A-1:edid/edid.bin video=HDMI-A-1:e`
-   (replace `HDMI-A-1` with your actual connector), then update GRUB and reboot.
-   This makes a “monitor” always present, so RustDesk/TeamViewer won’t go black.
+To fix this buy an EDID DisplayPort emulator from Amazon.
 
 ## 8. Install Openssh server
 
 `sudo apt install openssh-server`
 
 Then turn on SSH connection from Ubuntu settings GUI app.
+
+## 9. Install OpenWebUI
+
+```sh
+docker run -d -p 3000:8080 --add-host=host.docker.internal:host-gateway -v open-webui:/app/backend/data --name open-webui --restart always ghcr.io/open-webui/open-webui:v0.6.25
+```
