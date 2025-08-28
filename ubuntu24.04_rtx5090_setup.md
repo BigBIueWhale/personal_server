@@ -129,6 +129,11 @@ qwen3:32b       030ee887880f    20 GB    24 hours ago
 user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$
 ```
 
+Optionally, view logs from Ollama:
+```sh
+journalctl --user -u ollama.service -f
+```
+
 ## 11. Free VRAM
 
 Rustdesk tends to steal VRAM. [./no_gpu.sh](./no_gpu.sh) is a script that patches the desktop file of `rustdesk` to make it run only on the Intel GPU.\
