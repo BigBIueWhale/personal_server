@@ -48,17 +48,17 @@ OLLAMA_HOST=${BRIDGE_IP}:11434
 
 
 # Forever, instead of default 5 minutes
-# set OLLAMA_KEEP_ALIVE=-1
+# OLLAMA_KEEP_ALIVE=-1
 
 # Come on, we can't run more than one model at a time
-set OLLAMA_NUM_PARALLEL=1
+OLLAMA_NUM_PARALLEL=1
 
 # Flash attention takes better advantage of Nvidia GPUs
 # Might have negative effect on gemma3 image understanding?
-set OLLAMA_FLASH_ATTENTION=1
+OLLAMA_FLASH_ATTENTION=1
 
 # Works only together with flash attention, enable only if your GPU has 24GB VRAM.
-# set OLLAMA_KV_CACHE_TYPE=q8_0
+# OLLAMA_KV_CACHE_TYPE=q8_0
 EOF
 
 # systemd --user unit
