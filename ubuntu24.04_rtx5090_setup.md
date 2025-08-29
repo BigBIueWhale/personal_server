@@ -99,10 +99,15 @@ sudo docker run -d -p 127.0.0.1:3000:8080 --add-host=host.docker.internal:host-g
 
 ## 10. Install Ollama
 
+We specifically install OpenWebUI in a way that it can only access `host.docker.internal` and doesn't have direct access to the host network (such as 127.0.0.1).\
+Therefore, we need to setup Ollama to listen on the `docker0` network interface.
+
+My install script gives important environment variables for Ollama to use. Such as `OLLAMA_FLASH_ATTENTION` and `OLLAMA_HOST`.
+
 [install_ollama_user_service.sh](./install_ollama_user_service.sh)
 
 ```sh
-user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$ ./install_ollama_user_service.sh 
+user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$ ./install_ollama_user_service.sh
 
 ✔ Installed/updated user service pointing at: /home/user/Downloads/ollama-linux-amd64_v0.11.7/bin/ollama
 • Pushed env to: /home/user/.config/ollama/env (OLLAMA_HOST set to 172.17.0.1:11434)
@@ -110,15 +115,15 @@ user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$ ./install_ollama_user_s
 
 ● ollama.service - Ollama (user) – local LLM server
      Loaded: loaded (/home/user/.config/systemd/user/ollama.service; enabled; preset: enabled)
-     Active: active (running) since Wed 2025-08-27 22:09:41 IDT; 3ms ago
-   Main PID: 874248 (ollama)
-      Tasks: 6 (limit: 76002)
-     Memory: 5.0M (peak: 5.0M)
-        CPU: 3ms
+     Active: active (running) since Fri 2025-08-29 11:45:38 IDT; 3ms ago
+   Main PID: 901534 (ollama)
+      Tasks: 1 (limit: 76002)
+     Memory: 3.7M (peak: 3.7M)
+        CPU: 2ms
      CGroup: /user.slice/user-1000.slice/user@1000.service/app.slice/ollama.service
-             └─874248 /home/user/.local/opt/ollama/ollama serve
+             └─901534 /home/user/.local/opt/ollama/ollama serve
 
-Aug 27 22:09:41 rtx5090 systemd[1816]: Started ollama.service - Ollama (user) – local LLM server.
+Aug 29 11:45:38 rtx5090 systemd[1843]: Started ollama.service - Ollama (user) – local LLM server.
 user@rtx5090:~/Downloads/ollama-linux-amd64_v0.11.7/bin$
 ```
 
