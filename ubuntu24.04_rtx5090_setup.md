@@ -78,10 +78,12 @@ https://erwansistandi.medium.com/install-docker-in-ubuntu-server-24-04-lts-bcfef
 ## 6. Install RustDesk
 Just the GUI client, and turn on direct access. No docker image, just the GUI which is a server by default.
 
-## 7. Switch the host to **Xorg** and (optionally) add a virtual display
+## 7. Wayland Virtual Display Issue
 
 By default both RustDesk and TeamViewer show black screen when the physical display is off in Wayland.\
 To fix this buy an EDID DisplayPort emulator from Amazon.
+
+Switching to Xorg doesn't solve the problem because Xorg uses up a bunch of VRAM, whereas Wayland is nice and uses the Intel iGPU for most things.
 
 ## 8. Install Openssh server
 
