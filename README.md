@@ -16,10 +16,10 @@ These are the steps to get **NVIDIA RTX 5090** working with CUDA on **Ubuntu 24.
 
 ## 2. NVIDIA Driver Installation
 
-1. Update packages and install NVIDIA open driver (575):
+1. Update packages and install NVIDIA open driver (580):
    ```bash
    sudo apt update
-   sudo apt install -y nvidia-driver-575-open nvidia-dkms-575-open
+   sudo apt install -y nvidia-driver-580-open nvidia-dkms-580-open
    sudo reboot
    ```
 
