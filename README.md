@@ -144,4 +144,31 @@ journalctl --user -u ollama.service -f
 ## 11. Free VRAM
 
 Rustdesk tends to steal VRAM. [./no_gpu.sh](./no_gpu.sh) is a script that patches the desktop file of `rustdesk` to make it run only on the Intel GPU.\
-[no_gpu_undo.sh](./no_gpu_undo.sh) is the cleanup to revert this change.
+[no_gpu_undo.sh](./no_gpu_undo.sh) is the cleanup to revert this change.\
+> Note: I don't think this actually works, and this is not the reason RustDesk is using VRAM. It's actually because of the video codec that RustDesk is actively using during an open remote desktop connection.
+
+# 12. Disable Avahi Server
+
+Avahi = the Linux/Unix **mDNS/DNS-SD (“Bonjour/Zeroconf”)** service. It advertises and discovers things on your **local LAN** via multicast UDP 5353, e.g.:
+
+* auto-discover network printers (AirPrint), scanners
+* “.local” hostnames (e.g., `mypc.local`)
+* file shares/SMB/AFP/NFS discovery in desktop environments
+* media/cast/discovery for some apps
+
+It’s **not** useful across the public internet and just adds attack surface/noise on a DMZ host.
+
+## Permanently disable it (safe on a server)
+
+```bash
+# stop now
+sudo systemctl stop avahi-daemon avahi-daemon.socket
+
+# prevent starting at boot or via socket activation
+sudo systemctl disable avahi-daemon avahi-daemon.socket
+sudo systemctl mask avahi-daemon avahi-daemon.socket
+
+# verify nothing is listening on 5353 anymore
+sudo ss -uapn | grep -E '(:|\.)(5353)\b' || echo "5353 closed"
+systemctl is-enabled avahi-daemon; systemctl status avahi-daemon --no-pager
+```
