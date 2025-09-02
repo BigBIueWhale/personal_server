@@ -163,9 +163,10 @@ It’s **not** useful across the public internet and just adds attack surface/no
 ```bash
 # stop now
 sudo systemctl stop avahi-daemon avahi-daemon.socket
+sudo systemctl stop avahi-daemon avahi-daemon.service avahi-daemon.socket
 
 # prevent starting at boot or via socket activation
-sudo systemctl disable avahi-daemon avahi-daemon.socket
+sudo systemctl disable avahi-daemon avahi-daemon.service avahi-daemon.socket
 sudo systemctl mask avahi-daemon avahi-daemon.socket
 
 # verify nothing is listening on 5353 anymore
