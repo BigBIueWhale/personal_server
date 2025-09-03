@@ -173,3 +173,7 @@ sudo systemctl mask avahi-daemon avahi-daemon.socket
 sudo ss -uapn | grep -E '(:|\.)(5353)\b' || echo "5353 closed"
 systemctl is-enabled avahi-daemon; systemctl status avahi-daemon --no-pager
 ```
+
+# 13. Install ComfyUI and CUDA support for docker
+See ComfyUI [installation guide](./install_comfyui.md).\
+Includes installation instructions for the needed CUDA support for docker.
