@@ -143,9 +143,8 @@ journalctl --user -u ollama.service -f
 
 ## 11. Free VRAM
 
-Rustdesk tends to steal VRAM. [./no_gpu.sh](./no_gpu.sh) is a script that patches the desktop file of `rustdesk` to make it run only on the Intel GPU.\
-[no_gpu_undo.sh](./no_gpu_undo.sh) is the cleanup to revert this change.\
-> Note: I don't think this actually works, and this is not the reason RustDesk is using VRAM. It's actually because of the video codec that RustDesk is actively using during an open remote desktop connection.
+Rustdesk tends to steal VRAM for use with its "hardware codec".\
+Uncheck "hardware codec" usage in RustDesk settings to free the 500+ MB of VRAM that RustDesk uses during a remote connection.
 
 # 12. Disable Avahi Server
 
