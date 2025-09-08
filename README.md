@@ -174,4 +174,4 @@ systemctl is-enabled avahi-daemon; systemctl status avahi-daemon --no-pager
 ```
 
 # 13. Install CUDA support for docker
-See [installation guide](./install_cuda_for_docker.md).\
+See [installation guide](./install_cuda_for_docker.md).
