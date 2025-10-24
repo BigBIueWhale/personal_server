@@ -85,6 +85,9 @@ To fix this buy an EDID DisplayPort emulator from Amazon.
 
 Switching to Xorg doesn't solve the problem because Xorg uses up a bunch of VRAM, whereas Wayland is nice and uses the Intel iGPU for most things.
 
+Wayland has another issue- unattended remote desktop access is purposefully inhibited "for security reasons". I created a project that provides a patch to disable that terrible Wayland "security" feature https://github.com/BigBIueWhale/ubuntu_patch_unattended_access. I've applied that security patch, and not my unattended access works perfectly.\
+I hedge my bets by having both RustDesk and TeamViewer on the same machine.
+
 ## 8. Install Openssh server
 
 `sudo apt install openssh-server`
