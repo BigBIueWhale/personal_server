@@ -48,7 +48,7 @@ OLLAMA_HOST=${BRIDGE_IP}:11434
 
 
 # Forever, instead of default 5 minutes
-# OLLAMA_KEEP_ALIVE=-1
+OLLAMA_KEEP_ALIVE=-1
 
 # Come on, we can't run more than one model at a time
 OLLAMA_NUM_PARALLEL=1
