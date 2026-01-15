@@ -411,8 +411,11 @@ def aggressive_rollback():
     if not success_v4 or not success_v6:
         print()
         print("Attempt 3: Delete rules individually...")
+        v4_all_deleted = True
+        v6_all_deleted = True
         for protocol, port, _ in reversed(VMWARE_BLOCK_RULES):
             if not success_v4:
+                deleted = False
                 for attempt in range(3):
                     result = subprocess.run(
                         ["iptables", "-D", "INPUT", "-p", protocol, "--dport", str(port), "-j", "DROP"],
@@ -420,8 +423,12 @@ def aggressive_rollback():
                     )
                     if result.returncode == 0:
                         print(f"  [OK] Deleted iptables rule for {protocol}/{port}")
+                        deleted = True
                         break
+                if not deleted:
+                    v4_all_deleted = False
             if not success_v6:
+                deleted = False
                 for attempt in range(3):
                     result = subprocess.run(
                         ["ip6tables", "-D", "INPUT", "-p", protocol, "--dport", str(port), "-j", "DROP"],
@@ -429,11 +436,34 @@ def aggressive_rollback():
                     )
                     if result.returncode == 0:
                         print(f"  [OK] Deleted ip6tables rule for {protocol}/{port}")
+                        deleted = True
                         break
+                if not deleted:
+                    v6_all_deleted = False
+        if not success_v4 and v4_all_deleted:
+            success_v4 = True
+        if not success_v6 and v6_all_deleted:
+            success_v6 = True
+
+    # Verify rollback by checking INPUT chain
+    print()
+    print("Verifying rollback...")
+    verify_failed = False
+    for cmd_name in ["iptables", "ip6tables"]:
+        result = subprocess.run([cmd_name, "-S", "INPUT"], capture_output=True, text=True)
+        lines = [l.strip() for l in result.stdout.strip().split('\n') if l.strip()]
+        # Check if any of our DROP rules are still present
+        for line in lines:
+            for protocol, port, _ in VMWARE_BLOCK_RULES:
+                if f"-p {protocol}" in line and f"--dport {port}" in line and "-j DROP" in line:
+                    print(f"  [WARN] Rule still present in {cmd_name}: {line}")
+                    verify_failed = True
+    if not verify_failed:
+        print("  [OK] No VMware DROP rules found in INPUT chains")
 
     print()
     print("=" * 60)
-    if success_v4 and success_v6:
+    if success_v4 and success_v6 and not verify_failed:
         print("ROLLBACK COMPLETE")
     else:
         print("ROLLBACK PARTIALLY COMPLETE - MANUAL INTERVENTION MAY BE NEEDED")
@@ -443,14 +473,22 @@ def aggressive_rollback():
         print("  sudo ip6tables -F INPUT")
     print("=" * 60)
 
-    # Clean up backup files
-    try:
+    # Only clean up backup files if rollback was fully successful
+    if success_v4 and success_v6 and not verify_failed:
+        try:
+            if BACKUP_FILE_V4.exists():
+                BACKUP_FILE_V4.unlink()
+            if BACKUP_FILE_V6.exists():
+                BACKUP_FILE_V6.unlink()
+        except:
+            pass  # Best effort cleanup
+    else:
+        print()
+        print("Backup files preserved for manual recovery:")
         if BACKUP_FILE_V4.exists():
-            BACKUP_FILE_V4.unlink()
+            print(f"  {BACKUP_FILE_V4}")
         if BACKUP_FILE_V6.exists():
-            BACKUP_FILE_V6.unlink()
-    except:
-        pass  # Best effort cleanup
+            print(f"  {BACKUP_FILE_V6}")
 
 
 # =============================================================================
@@ -562,7 +600,8 @@ def main():
                 return 1
 
             mins, secs = divmod(int(remaining), 60)
-            print(f"\r  Time remaining: {mins:02d}:{secs:02d}  [CTRL+C to commit]  ", end="", flush=True)
+            if int(remaining) % 30 == 0 or remaining < 10:
+                print(f"  Time remaining: {mins:02d}:{secs:02d}  [CTRL+C to commit]")
             time.sleep(1)
 
     except Exception as e:

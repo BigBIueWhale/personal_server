@@ -181,12 +181,13 @@ See [installation guide](./install_cuda_for_docker.md).
 
 # 14. Network Security (DMZ-Exposed Host)
 
-This server runs with full DMZ mode enabled on the router, exposing all ports to the public internet. The only software installed on this system that is "badly designed" from a network security perspective is **VMware® Workstation 17 Pro version 17.6.4 (build-24832109)**—it insists on listening on port 902 on all interfaces (`0.0.0.0`) immediately after installation, with no GUI option to disable this behavior.
+This server runs with full DMZ mode enabled on the router, exposing all ports to the public internet. See **[Network Security Guide](./network_security/README.md)** for details on why UFW cannot be used and how VMware ports are blocked.
 
-See the comprehensive **[Network Security Guide](./network_security/README.md)** for:
+```bash
+# Verify network security posture
+sudo python3 ./network_security/verify_network_security.py
 
-- Auditing which ports are exposed vs. localhost-only
-- Why UFW must NOT be used (breaks RustDesk P2P hole punching)
-- Blocking VMware ports (902, 912, 8222, 8333) with surgical iptables rules
-- Known CVEs in VMware Authentication Daemon
-- Automated verification script: `sudo python3 ./network_security/verify_network_security.py`
+# Block VMware ports (902, 912, 8222, 8333) with 5-minute auto-rollback safety
+# Press CTRL+C to commit changes, or wait 5 minutes to auto-rollback
+sudo python3 ./network_security/apply_vmware_firewall.py
+```
