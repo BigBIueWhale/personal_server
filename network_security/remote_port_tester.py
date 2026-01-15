@@ -881,9 +881,12 @@ def test_port(host: str, spec: PortSpec, timeout: float = 3.0) -> TestResult:
 # =============================================================================
 
 def scan_port_range_tcp(host: str, ports: list[int], timeout: float = 1.5,
-                        max_workers: int = 100) -> list[ScanResult]:
+                        max_workers: int = 100,
+                        progress_callback: Optional[callable] = None) -> list[ScanResult]:
     """Scan a range of TCP ports in parallel to find open ones."""
     open_ports = []
+    completed = 0
+    total = len(ports)
 
     def check_port(port: int) -> Optional[ScanResult]:
         state, banner, _ = test_tcp_port(host, port, timeout)
@@ -897,6 +900,9 @@ def scan_port_range_tcp(host: str, ports: list[int], timeout: float = 1.5,
             result = future.result()
             if result:
                 open_ports.append(result)
+            completed += 1
+            if progress_callback:
+                progress_callback(completed, total, len(open_ports))
 
     return sorted(open_ports, key=lambda x: x.port)
 
@@ -1112,14 +1118,34 @@ def run_all_tests(target_ipv4: str, target_ipv6: Optional[str] = None,
     # -------------------------------------------------------------------------
     print_section("7. DISCOVERY SCAN FOR UNEXPECTED OPEN PORTS")
     discovery_ports = get_discovery_ports(quick)
-    print(f"Scanning {len(discovery_ports)} ports for unexpected open services...")
-    print("(This may take a while...)")
+    print(f"Scanning {len(discovery_ports):,} TCP ports for unexpected open services...")
     print()
 
     # Get list of expected open ports
     expected_open = {22, 21118}  # SSH and RustDesk TCP
 
-    open_ports = scan_port_range_tcp(target_ipv4, discovery_ports, timeout=1.5)
+    # Progress callback for in-place updates
+    last_percent = [-1]  # Use list to allow mutation in closure
+    scan_start = time.time()
+
+    def show_progress(completed: int, total: int, found: int) -> None:
+        percent = (completed * 100) // total
+        # Update every 1% to avoid excessive output
+        if percent > last_percent[0]:
+            last_percent[0] = percent
+            elapsed = time.time() - scan_start
+            # Estimate remaining time based on progress
+            if completed > 0 and percent < 100:
+                eta = (elapsed / completed) * (total - completed)
+                eta_str = f"ETA {eta:.0f}s" if eta < 120 else f"ETA {eta/60:.1f}m"
+            else:
+                eta_str = ""
+            print(f"\r  Progress: {percent:3d}% ({completed:,}/{total:,}) | Open: {found} | {eta_str}    ", end="", flush=True)
+
+    open_ports = scan_port_range_tcp(target_ipv4, discovery_ports, timeout=1.5,
+                                     progress_callback=show_progress)
+    # Clear progress line and move to next line
+    print("\r" + " " * 70 + "\r", end="")
     unexpected = [p for p in open_ports if p.port not in expected_open]
 
     if unexpected:
