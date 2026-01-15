@@ -27,6 +27,18 @@ Or use the automated verification script included in this directory:
 sudo python3 ./verify_network_security.py
 ```
 
+To verify security from an **external perspective** (e.g., from a laptop in another city), use the remote port tester which scans all 65,535 TCP ports:
+
+```bash
+# Run from a DIFFERENT machine, not the server itself
+python3 remote_port_tester.py --target YOUR_SERVER_IP
+
+# Optional: include IPv6 testing
+python3 remote_port_tester.py --target YOUR_SERVER_IP --ipv6 YOUR_SERVER_IPV6
+```
+
+A full scan takes approximately **10-15 minutes** depending on network latency. Use `--quick` for a faster ~1,100 port scan (~30 seconds).
+
 ---
 
 ## 2. Ports Intentionally Exposed to the Internet
