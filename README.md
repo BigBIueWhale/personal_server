@@ -191,3 +191,9 @@ sudo python3 ./network_security/verify_network_security.py
 # Press CTRL+C to commit changes, or wait 5 minutes to auto-rollback
 sudo python3 ./network_security/apply_vmware_firewall.py
 ```
+
+# 15. Fix VMware Workstation Copy/Paste (Wayland Host)
+
+VMware Workstation Pro 17.x has broken clipboard sync on Wayland — copying from host to guest doesn't work due to a Mutter bug in Wayland→XWayland clipboard synchronization.
+
+See **[VMware Host-Guest Integration](./vmware/README.md)** for solutions including clipboard sync and shared folder mounting.
