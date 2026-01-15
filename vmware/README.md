@@ -12,17 +12,17 @@ See **[fix_vmware_clipboard.md](./fix_vmware_clipboard.md)** for full details.
 
 ### Installation (run on HOST)
 
-1. Install build dependencies:
+1. Install build dependencies (tested with rustc 1.89.0):
    ```bash
-   sudo apt update
-   sudo apt install -y cargo rustc libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+   sudo apt install -y libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
    ```
 
-2. Clone and build clipboard-sync:
+2. Clone and build clipboard-sync (pinned to tested commit, 2025-09-30):
    ```bash
    cd ~/Downloads
    git clone https://github.com/dnut/clipboard-sync.git
    cd clipboard-sync
+   git checkout 138a59b8f3044dd9e7dcccd9607bbbb48c14bae6
    cargo build --release
    ```
 
