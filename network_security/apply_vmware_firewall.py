@@ -85,6 +85,8 @@ def verify_commands_exist():
             print(f"REFUSED: Required command '{cmd}' not found.")
             if cmd == "netfilter-persistent":
                 print("Install with: sudo apt install iptables-persistent")
+                print("  Note: You will be prompted 'Save current IPv4 rules?' and 'Save current IPv6 rules?'")
+                print("  Answer YES to both (your INPUT chain should be empty, so this is safe).")
             sys.exit(1)
     print(f"[OK] All required commands available: {', '.join(REQUIRED_COMMANDS)}")
 
