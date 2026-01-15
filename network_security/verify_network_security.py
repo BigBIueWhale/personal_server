@@ -444,30 +444,12 @@ def check_port_is_blocked(chain: IptablesChain, protocol: str, port: int) -> tup
         return False, "No DROP/REJECT rule found for this port"
 
 
-def verify_iptables_rules() -> list[CheckResult]:
+def verify_iptables_rules(
+    ipv4_chain: IptablesChain,
+    ipv6_chain: IptablesChain,
+) -> list[CheckResult]:
     """Verify all required iptables DROP rules are in place."""
     results = []
-
-    # Parse both IPv4 and IPv6 chains
-    try:
-        ipv4_chain = get_iptables_chain(ipv6=False)
-    except IptablesParseError as e:
-        results.append(CheckResult(
-            passed=False,
-            message="FATAL: Failed to parse iptables rules",
-            details=str(e),
-        ))
-        return results
-
-    try:
-        ipv6_chain = get_iptables_chain(ipv6=True)
-    except IptablesParseError as e:
-        results.append(CheckResult(
-            passed=False,
-            message="FATAL: Failed to parse ip6tables rules",
-            details=str(e),
-        ))
-        return results
 
     for (protocol, port), description in IPTABLES_MUST_BLOCK.items():
         ipv4_blocked, ipv4_reason = check_port_is_blocked(ipv4_chain, protocol, port)
@@ -547,11 +529,16 @@ def verify_no_forbidden_ports(sockets: list[ListeningSocket]) -> list[CheckResul
     return results
 
 
-def verify_no_unexpected_external_ports(sockets: list[ListeningSocket]) -> list[CheckResult]:
+def verify_no_unexpected_external_ports(
+    sockets: list[ListeningSocket],
+    ipv4_chain: Optional[IptablesChain] = None,
+    ipv6_chain: Optional[IptablesChain] = None,
+) -> list[CheckResult]:
     """Verify no unexpected ports are listening on external interfaces."""
     results = []
     unexpected = []
     rustdesk_ephemeral_ports = []
+    vmware_blocked_ports = []  # VMware ports that are listening but blocked by iptables
 
     for socket in sockets:
         if not socket.is_external():
@@ -571,7 +558,14 @@ def verify_no_unexpected_external_ports(sockets: list[ListeningSocket]) -> list[
 
         # Check if this is a VMware port that should be blocked by iptables
         if (socket.protocol, socket.local_port) in IPTABLES_MUST_BLOCK:
-            # This will be reported by the iptables check, but also note it here
+            # Cross-reference with actual iptables rules to verify it's blocked
+            if ipv4_chain is not None and ipv6_chain is not None:
+                ipv4_blocked, _ = check_port_is_blocked(ipv4_chain, socket.protocol, socket.local_port)
+                ipv6_blocked, _ = check_port_is_blocked(ipv6_chain, socket.protocol, socket.local_port)
+                if ipv4_blocked and ipv6_blocked:
+                    vmware_blocked_ports.append(socket)
+                    continue
+            # If iptables chains not available or port not blocked, treat as unexpected
             unexpected.append(socket)
             continue
 
@@ -582,14 +576,32 @@ def verify_no_unexpected_external_ports(sockets: list[ListeningSocket]) -> list[
         # This is truly unexpected
         unexpected.append(socket)
 
-    # Report RustDesk ephemeral ports (informational)
-    if rustdesk_ephemeral_ports:
-        ports_str = ", ".join(f"{s.local_port}" for s in rustdesk_ephemeral_ports)
+    # Report RustDesk ephemeral ports (show process verification for transparency)
+    for socket in rustdesk_ephemeral_ports:
         results.append(CheckResult(
             passed=True,
-            message=f"RustDesk ephemeral UDP port(s) detected: {ports_str}",
-            details="These are expected for P2P hole punching (dynamic ports in range 32768-60999).",
+            message=f"RustDesk ephemeral UDP port {socket.local_port} verified by process name",
+            details=(
+                f"Process: {socket.process_name} (PID: {socket.pid or 'unknown'})\n"
+                f"Address: {socket.local_address}\n"
+                f"Purpose: P2P hole punching (dynamic port in range 32768-60999)"
+            ),
         ))
+
+    # Report VMware ports that are listening but blocked by iptables (this is the expected secure state)
+    if vmware_blocked_ports:
+        for socket in vmware_blocked_ports:
+            description = IPTABLES_MUST_BLOCK.get((socket.protocol, socket.local_port), "VMware service")
+            results.append(CheckResult(
+                passed=True,
+                message=f"VMware port {socket.local_port}/{socket.protocol} listening but blocked by iptables",
+                details=(
+                    f"Service: {description}\n"
+                    f"Process: {socket.process_name or 'unknown'} (PID: {socket.pid or 'unknown'})\n"
+                    f"Address: {socket.local_address}\n"
+                    f"Status: Secure (iptables DROP rules prevent external access)"
+                ),
+            ))
 
     if unexpected:
         for socket in unexpected:
@@ -603,7 +615,7 @@ def verify_no_unexpected_external_ports(sockets: list[ListeningSocket]) -> list[
                     f"  2. An unwanted service that should be disabled or blocked"
                 ),
             ))
-    else:
+    elif not vmware_blocked_ports:
         results.append(CheckResult(
             passed=True,
             message="No unexpected ports found listening on external interfaces",
@@ -680,20 +692,42 @@ def main() -> int:
 
     print(f"Found {len(sockets)} listening sockets.\n")
 
+    # Parse iptables chains once for use by multiple verification functions
+    ipv4_chain: Optional[IptablesChain] = None
+    ipv6_chain: Optional[IptablesChain] = None
+    iptables_parse_failed = False
+
+    print("Parsing iptables rules...")
+    try:
+        ipv4_chain = get_iptables_chain(ipv6=False)
+    except IptablesParseError as e:
+        print(f"\033[91m[FATAL]\033[0m Failed to parse iptables rules: {e}")
+        iptables_parse_failed = True
+        all_passed = False
+
+    try:
+        ipv6_chain = get_iptables_chain(ipv6=True)
+    except IptablesParseError as e:
+        print(f"\033[91m[FATAL]\033[0m Failed to parse ip6tables rules: {e}")
+        iptables_parse_failed = True
+        all_passed = False
+
+    if not iptables_parse_failed:
+        print("iptables rules parsed successfully.\n")
+
     # Section 1: Verify iptables rules
     print_header("1. iptables Rules Verification")
     print("Checking that VMware ports are blocked by iptables...")
     print()
 
-    try:
-        results = verify_iptables_rules()
+    if iptables_parse_failed:
+        print("\033[91m[SKIP]\033[0m Cannot verify iptables rules due to parsing failure above.")
+    else:
+        results = verify_iptables_rules(ipv4_chain, ipv6_chain)
         for result in results:
             print_result(result)
             if not result.passed:
                 all_passed = False
-    except RuntimeError as e:
-        print(f"ERROR: {e}")
-        all_passed = False
 
     # Section 2: Verify forbidden ports
     print_header("2. Forbidden Ports Check")
@@ -711,7 +745,7 @@ def main() -> int:
     print("Checking for any unexpected services on external interfaces...")
     print()
 
-    results = verify_no_unexpected_external_ports(sockets)
+    results = verify_no_unexpected_external_ports(sockets, ipv4_chain, ipv6_chain)
     for result in results:
         print_result(result)
         if not result.passed:
