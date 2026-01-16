@@ -1,43 +1,6 @@
 # VMware Host-Guest Integration
 
-This folder contains fixes for VMware Workstation Pro host-guest integration issues on Linux (particularly Wayland).
-
----
-
-## Clipboard Sync (Wayland Host)
-
-VMware Workstation Pro 17.x has broken clipboard sync on Wayland — copying from host to guest doesn't work due to a Mutter bug in Wayland-to-XWayland clipboard synchronization.
-
-See **[fix_vmware_clipboard.md](./fix_vmware_clipboard.md)** for full details.
-
-### Installation (run on HOST)
-
-1. Install build dependencies (tested with rustc 1.89.0):
-   ```bash
-   sudo apt install -y libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
-   ```
-
-2. Clone and build clipboard-sync (pinned to tested commit, 2025-09-30):
-   ```bash
-   cd ~/Downloads
-   git clone https://github.com/dnut/clipboard-sync.git
-   cd clipboard-sync
-   git checkout 138a59b8f3044dd9e7dcccd9607bbbb48c14bae6
-   cargo build --release
-   ```
-
-3. Copy the installer script into the build directory and run it:
-   ```bash
-   cp ~/Desktop/personal_server/vmware/install_clipboard_sync.sh .
-   ./install_clipboard_sync.sh
-   ```
-
-4. Verify:
-   ```bash
-   systemctl --user status clipboard-sync.service
-   ```
-
----
+Scripts for VMware Workstation Pro host-guest integration on Linux.
 
 ## Shared Folders
 
