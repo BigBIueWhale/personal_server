@@ -39,8 +39,7 @@ fi
 
 CURRENT_IP=$(ip -4 addr show | grep "inet 10\." | awk '{print $2}' | cut -d/ -f1)
 if [ "$CURRENT_IP" != "10.0.0.200" ]; then
-    ping -c 1 -W 1 10.0.0.200 &> /dev/null
-    if [ $? -eq 0 ]; then
+    if ping -c 1 -W 1 10.0.0.200 &> /dev/null; then
         echo "ERROR: 10.0.0.200 is already in use by another device"
         exit 1
     fi
