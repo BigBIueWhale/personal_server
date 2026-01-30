@@ -39,6 +39,10 @@ detect_bridge_ip() {
 }
 
 BRIDGE_IP="$(detect_bridge_ip)"
+# We have https://github.com/BigBIueWhale/ollama_load_balancer running on the Docker
+# bridge IP, pointing to 127.0.0.1 (our Ollama server). So bind Ollama to localhost only.
+# BRIDGE_IP="${BRIDGE_IP}"
+BRIDGE_IP=127.0.0.1
 
 # Write a fresh env file every time (authoritative config).
 cat >"$ENV_FILE" <<EOF
@@ -56,6 +60,12 @@ OLLAMA_NUM_PARALLEL=1
 # Flash attention takes better advantage of Nvidia GPUs
 # Might have negative effect on gemma3 image understanding?
 OLLAMA_FLASH_ATTENTION=1
+
+# Debug logging to diagnose KV cache behavior.
+# View logs with: journalctl --user -u ollama -f | grep "cache slot"
+# Expected output showing cache hits: "loading cache slot id=0 cache=60000 prompt=60500 used=60000 remaining=500"
+# If used=0, the cache is being invalidated (see https://github.com/BigBIueWhale/vibe_web_terminal/blob/master/doc/ollama_kv_cache_bug_investigation.md)
+OLLAMA_DEBUG=1
 
 # Works only together with flash attention, enable only if your GPU has 24GB VRAM.
 # OLLAMA_KV_CACHE_TYPE=q8_0
