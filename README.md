@@ -192,3 +192,9 @@ sudo python3 ./network_security/verify_network_security.py
 sudo python3 ./network_security/apply_vmware_firewall.py
 ```
 
+# 15. VMware Kernel Module Fix (Kernel 6.17)
+
+VMware Workstation Pro 17.6.4 fails to compile its `vmmon` and `vmnet` kernel modules on kernel 6.17 due to removed/renamed kernel APIs. The fix is minimal (5 files, 4 issues) and is documented at:
+
+https://github.com/BigBIueWhale/vmware-linux-kernel-drivers-fix
+
