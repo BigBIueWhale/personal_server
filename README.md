@@ -198,3 +198,15 @@ VMware Workstation Pro 17.6.4 fails to compile its `vmmon` and `vmnet` kernel mo
 
 https://github.com/BigBIueWhale/vmware-linux-kernel-drivers-fix
 
+# 16. Configure /tmp Cleanup Policy
+
+By default, Ubuntu's `systemd-tmpfiles` purges `/tmp` contents on every reboot (via `systemd-tmpfiles-setup.service --remove`) and deletes files older than 30 days (via `systemd-tmpfiles-clean.timer`). This is aggressive for a workstation that keeps cloned repos, build artifacts, or reference data in `/tmp`.
+
+Run the configure script to:
+- **Disable boot-time purge** — `/tmp` contents survive reboots
+- **Extend periodic cleanup from 30 to 90 days** — files untouched for 90+ days are still cleaned
+
+```bash
+./configure_tmp_cleanup.sh
+```
+
