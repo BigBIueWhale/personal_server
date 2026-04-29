@@ -47,7 +47,7 @@ These ports are **by design** exposed to the public internet and are required fo
 
 | Port | Protocol | Process | Purpose |
 |------|----------|---------|---------|
-| **22** | TCP | `sshd` (OpenSSH Server) | Secure Shell access for remote administration from any device including a Samsung Galaxy S25 smartphone running Termius, a MacBook Pro running Terminal, or a Windows 11 PC running PuTTY. Authentication is via SSH key pairs, not passwords. |
+| **22** | TCP | `sshd` (OpenSSH Server) | Secure Shell access for remote administration from any device including a Samsung Galaxy S25 smartphone running Termius, a MacBook Pro running Terminal, or a Windows 11 PC running PuTTY. Authentication is by password (intentional trade-off — convenient for ad-hoc remote access from devices that don't have my SSH keys provisioned; the obvious harden-here lever for this DMZ host is to switch to key-only auth and accept the workflow tax). |
 | **21118** | TCP | `rustdesk` | RustDesk direct IP access port. The RustDesk Client application (installed via `.deb` package from [rustdesk.com](https://rustdesk.com)) acts as both client and server simultaneously. This port allows incoming remote desktop connections without relying on RustDesk's public relay infrastructure. |
 | **21119** | UDP | `rustdesk` | RustDesk signaling/relay port for WebSocket-based communication. |
 | **Dynamic UDP** | UDP | `rustdesk` | RustDesk uses dynamically allocated ephemeral UDP ports for peer-to-peer (P2P) hole punching. The specific port number changes on each connection attempt (e.g., port 38642 in one session, port 41023 in another). This is expected and correct behavior—see Section 4 for why this matters. |
