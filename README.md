@@ -14,7 +14,7 @@ Every package and downloaded asset is **pinned to an exact version** in [`script
 
 This box is a hybrid-graphics build: discrete NVIDIA GPU (RTX 5090) **plus** a CPU with an integrated GPU (iGPU). **Both are required**, and they have non-interchangeable roles.
 
-**The monitor — and the EDID DisplayPort emulator from [§16](#16-edid-displayport-emulator-hardware) — must be plugged into the motherboard's video output, NOT the GPU's.** Repeat: cable into the motherboard's back-panel HDMI/DisplayPort, not the RTX's outputs.
+**The monitor — and the EDID DisplayPort emulator from [§17](#17-edid-displayport-emulator-hardware) — must be plugged into the motherboard's video output, NOT the GPU's.** Repeat: cable into the motherboard's back-panel HDMI/DisplayPort, not the RTX's outputs.
 
 Reasons this matters:
 
@@ -117,22 +117,60 @@ Boot from the USB stick. In the live-image session before installation:
 1. **When prompted *"a newer installer is available — Update?"*, click yes.** The updater pulls a newer `ubuntu-desktop-installer` snap. This is fine; it does NOT change the default-display-server policy or the resulting software stack — that's decided post-install by the gdm3 udev rule from [§0](#0-why-xorg-only), regardless of installer version. (We confirmed this empirically during the reference setup.)
 2. Choose **"Erase disk and install Ubuntu"** for the install method (this guide assumes a single-purpose box, no dual-boot).
 3. Check **"Install third-party software for graphics and Wi-Fi hardware and additional media formats"**. This is critical — it pulls in:
-   - **The NVIDIA proprietary driver** out of `multiverse` (the `nvidia-driver-XXX-open` metapackage on the current branch — 595 at time of writing). Without this, the install lands on `nouveau` and `nvidia-smi` is unavailable until you run [§9](#9-nvidia-driver-and-dkms) by hand.
+   - **The NVIDIA proprietary driver** out of `multiverse` (the `nvidia-driver-XXX-open` metapackage on the current branch — 595 at time of writing). Without this, the install lands on `nouveau` and `nvidia-smi` is unavailable until you run [§10](#10-nvidia-driver-and-dkms) by hand.
    - **Wi-Fi and Bluetooth firmware blobs** that are not in `main`.
    - **Restricted media codecs** (MP3, AAC, H.264 userland) for desktop usability.
 
-   You'll still run [§9](#9-nvidia-driver-and-dkms) afterwards to add DKMS and pin the driver branch — the third-party checkbox installs the driver but does NOT install DKMS, which is what makes the kernel module survive kernel upgrades.
+   You'll still run [§10](#10-nvidia-driver-and-dkms) afterwards to add DKMS and pin the driver branch — the third-party checkbox installs the driver but does NOT install DKMS, which is what makes the kernel module survive kernel upgrades.
 
 After install completes and the box reboots:
 
-- The session lands at **Xorg automatically.** This is the gdm3 udev rule from [§0](#0-why-xorg-only) detecting the now-loaded `nvidia` kernel module and writing `PreferredDisplayServer=xorg` into `/run/gdm/custom.conf` at every boot. You don't have to do anything to get here — it's the default for any NVIDIA-on-noble-updates install since 2025-01-20. Verify with [§4](#4-validate-xorg-session) before proceeding.
-- The **GDM greeter (the login screen itself), however, is still Wayland by default** — that's a separate decision from the user-session policy. RustDesk warns about this on launch, and you'd be locked out remotely if autologin ever fails. We patch that in [§5](#5-gdm-greeter-on-xorg) by uncommenting `WaylandEnable=false` in `/etc/gdm3/custom.conf`.
+- The session lands at **Xorg automatically.** This is the gdm3 udev rule from [§0](#0-why-xorg-only) detecting the now-loaded `nvidia` kernel module and writing `PreferredDisplayServer=xorg` into `/run/gdm/custom.conf` at every boot. You don't have to do anything to get here — it's the default for any NVIDIA-on-noble-updates install since 2025-01-20. Verify with [§5](#5-validate-xorg-session) before proceeding.
+- The **GDM greeter (the login screen itself), however, is still Wayland by default** — that's a separate decision from the user-session policy. RustDesk warns about this on launch, and you'd be locked out remotely if autologin ever fails. We patch that in [§6](#6-gdm-greeter-on-xorg) by uncommenting `WaylandEnable=false` in `/etc/gdm3/custom.conf`.
 
 After the first reboot, log into your account, open a terminal, and clone this repository to start running the numbered scripts.
 
 ---
 
-## 3. Static IP
+## 3. Install Claude Code CLI
+
+This is the first install step on purpose. Once Claude Code is running, Claude itself can guide the rest of the setup — read this README, execute the numbered scripts, answer "what does this do and why" turn by turn.
+
+```bash
+bash scripts/00_install_claude_code.sh        # run as the desktop user, NOT sudo
+```
+
+Reference: [`scripts/00_install_claude_code.sh`](./scripts/00_install_claude_code.sh). Five idempotent sub-steps:
+
+1. Install via Anthropic's official binary installer at `https://claude.ai/install.sh` — lands the binary at `/home/<user>/.local/bin/claude`.
+2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` (skipped if any existing `export PATH=` line already references `.local/bin`).
+3. Append a marker-bracketed env block to `/home/<user>/.bashrc` with the three exports that lock in maximum thinking effort on Opus 4.7 (1M context): `CLAUDE_CODE_EFFORT_LEVEL=max`, `ANTHROPIC_MODEL='claude-opus-4-7[1m]'`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000`.
+4. Merge five managed keys into `/home/<user>/.claude/settings.json` — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, plus `env.CLAUDE_CODE_EFFORT_LEVEL=max` and `env.CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000`. Pre-existing keys you have added are preserved untouched.
+5. Create `/home/<user>/.claude/CLAUDE.md` with a one-paragraph adaptive-thinking nudge — Opus 4.7 always uses adaptive reasoning (no API switch to force fixed-large thinking on every turn), so a `CLAUDE.md` note is the documented way to bias the per-turn adaptive trigger upward.
+
+### Why max effort needs to be locked in three places
+
+Each launch path catches a different one of the three; on its own each one has a hole:
+
+- `~/.bashrc` exports — caught by terminal sessions that source bashrc.
+- `~/.claude/settings.json` `env` block — caught by GNOME/KDE desktop launchers and IDE-integrated terminals, neither of which source `.bashrc`.
+- `~/.claude/settings.json` `effortLevel: "xhigh"` — fallback if both env paths fail. It cannot be `"max"` here: the schema enum currently drops the value (`anthropics/claude-code` issue [#50557](https://github.com/anthropics/claude-code/issues/50557)) and silently overrides to `xhigh`. So `xhigh` is the next-best persistent setting; the env paths above lift it back to `max`.
+
+### Idempotency and refuse-on-tamper guarantees
+
+Every write is a three-way decision:
+
+- **Already-correct → no-op.**
+- **Absent → write.**
+- **Present-and-different → REFUSE LOUDLY** with a precise diagnostic; never silently overwrites and never silently double-applies.
+
+So a re-run is safe in both directions: same starting state → no change; drifted state → script aborts with a message pointing at the specific file and field that doesn't match. To recover from a refusal: edit the conflicting region back to the expected value (or delete it entirely), then re-run.
+
+After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude` to authenticate on first launch, and verify max effort with the `/effort` slash command — should show `max` in the slider.
+
+---
+
+## 4. Static IP
 
 The router's DMZ rule needs a fixed target. Set a static IPv4 on the wireless interface:
 
@@ -147,7 +185,7 @@ After it succeeds, **update the router's DMZ target on the router admin UI** to 
 
 ---
 
-## 4. Validate Xorg session
+## 5. Validate Xorg session
 
 Before running any other script, confirm you are in an Xorg session:
 
@@ -161,7 +199,7 @@ If this fails, see [§0](#0-why-xorg-only).
 
 ---
 
-## 5. GDM greeter on Xorg
+## 6. GDM greeter on Xorg
 
 The gdm3 patch from [§0](#0-why-xorg-only) covers the **user session** but not the **GDM greeter** (the login screen itself, before any user logs in). The greeter still defaults to Wayland. RustDesk warns about this on launch — and if autologin ever fails, you would be locked out remotely.
 
@@ -175,7 +213,7 @@ Reference: [`scripts/03_configure_gdm_xorg.sh`](./scripts/03_configure_gdm_xorg.
 
 ---
 
-## 6. Disable Avahi (mDNS / Bonjour / Zeroconf)
+## 7. Disable Avahi (mDNS / Bonjour / Zeroconf)
 
 Avahi advertises and discovers services on the LAN via multicast UDP 5353. On a server intentionally exposed via DMZ to the public internet, this is purely attack surface.
 
@@ -187,7 +225,7 @@ Reference: [`scripts/04_disable_avahi.sh`](./scripts/04_disable_avahi.sh). Handl
 
 ---
 
-## 7. /tmp cleanup policy
+## 8. /tmp cleanup policy
 
 Default Ubuntu purges `/tmp` on every boot and removes files older than 30 days. Override that to keep `/tmp` across reboots and extend the cleanup window to 90 days:
 
@@ -199,7 +237,7 @@ Reference: [`scripts/05_configure_tmp_cleanup.sh`](./scripts/05_configure_tmp_cl
 
 ---
 
-## 8. OpenSSH server
+## 9. OpenSSH server
 
 ```bash
 sudo bash scripts/06_install_openssh_server.sh
@@ -213,7 +251,7 @@ This script does not change SSH authentication policy. `/etc/ssh/sshd_config` an
 
 ---
 
-## 9. NVIDIA driver and DKMS
+## 10. NVIDIA driver and DKMS
 
 ```bash
 sudo bash scripts/07_install_nvidia_driver.sh
@@ -231,7 +269,7 @@ The script then runs `nvidia-smi` and confirms `dkms status` reports an `nvidia/
 
 ---
 
-## 10. CUDA Toolkit (host) — optional
+## 11. CUDA Toolkit (host) — optional
 
 If you intend to compile CUDA code on the host, install the toolkit:
 
@@ -243,11 +281,11 @@ Reference: [`scripts/08_install_cuda_toolkit.sh`](./scripts/08_install_cuda_tool
 
 After it finishes, open a new shell (or `source ~/.bashrc`) so `nvcc` is on `PATH`.
 
-Pre-built CUDA workloads (binaries shipping their own CUDA runtime libs, containers built `FROM nvidia/cuda:...`) do not need this — only the driver from [§9](#9-nvidia-driver-and-dkms). Skip this section if your only host-side CUDA need is running, not compiling.
+Pre-built CUDA workloads (binaries shipping their own CUDA runtime libs, containers built `FROM nvidia/cuda:...`) do not need this — only the driver from [§10](#10-nvidia-driver-and-dkms). Skip this section if your only host-side CUDA need is running, not compiling.
 
 ---
 
-## 11. Docker
+## 12. Docker
 
 ```bash
 sudo bash scripts/09_install_docker.sh
@@ -257,7 +295,7 @@ Reference: [`scripts/09_install_docker.sh`](./scripts/09_install_docker.sh). Ins
 
 After it finishes, **log out and back in** (or run `newgrp docker`) so your shell picks up the `docker` group membership and you can run `docker` without sudo.
 
-We use `docker-ce` from `download.docker.com` rather than `docker.io` from Ubuntu's universe pocket because the [NVIDIA Container Toolkit](#12-nvidia-container-toolkit) (next section) is officially tested against `docker-ce`, the Compose plugin and Buildx plugin track `docker-ce`'s release cadence, and security advisories track upstream.
+We use `docker-ce` from `download.docker.com` rather than `docker.io` from Ubuntu's universe pocket because the [NVIDIA Container Toolkit](#13-nvidia-container-toolkit) (next section) is officially tested against `docker-ce`, the Compose plugin and Buildx plugin track `docker-ce`'s release cadence, and security advisories track upstream.
 
 ### Operational rule for this DMZ-exposed host (non-negotiable)
 
@@ -272,7 +310,7 @@ Membership in the `docker` group is **root-equivalent**. Anyone who can write to
 
 ---
 
-## 12. NVIDIA Container Toolkit
+## 13. NVIDIA Container Toolkit
 
 ```bash
 sudo bash scripts/10_install_nvidia_container_toolkit.sh
@@ -288,7 +326,7 @@ The container's `nvidia-smi` should print the same RTX and driver/CUDA version a
 
 ---
 
-## 13. RustDesk
+## 14. RustDesk
 
 ```bash
 sudo bash scripts/11_install_rustdesk.sh
@@ -331,7 +369,7 @@ These are the in-app settings that actually flip the listener on and harden the 
 
 ---
 
-## 14. TeamViewer
+## 15. TeamViewer
 
 ```bash
 sudo bash scripts/12_install_teamviewer.sh
@@ -352,7 +390,7 @@ I keep both RustDesk and TeamViewer installed on the same box — belt and suspe
 
 ---
 
-## 15. Developer toolchain
+## 16. Developer toolchain
 
 ```bash
 sudo bash scripts/13_install_developer_toolchain.sh
@@ -406,7 +444,7 @@ After install, future `apt upgrade` keeps VS Code current automatically.
 
 ---
 
-## 16. EDID DisplayPort emulator (hardware)
+## 17. EDID DisplayPort emulator (hardware)
 
 When the physical monitor is powered off, both Xorg and Wayland drop the GPU's display output and render a black screen — RustDesk and TeamViewer connect to a session with no pixels. The fix is a hardware **EDID DisplayPort emulator** (~$10 on Amazon): a small dongle that plugs into a free DisplayPort or HDMI on the GPU and presents a permanent fake EDID, making the GPU believe a monitor is always connected.
 
@@ -414,7 +452,7 @@ This is hardware, not software — no script. Buy one and plug it in.
 
 ---
 
-## 17. Network security verification
+## 18. Network security verification
 
 Before flipping the router DMZ, run the verification audit:
 
@@ -448,11 +486,11 @@ Reference: [`network_security/remote_port_tester.py`](./network_security/remote_
 
 ---
 
-## 18. Router DMZ configuration
+## 19. Router DMZ configuration
 
-Manual step on the router admin UI. Set the DMZ host to the static IP from [§3](#3-static-ip). Verify the router forwards all incoming connections (TCP, UDP, ICMP) to that IP.
+Manual step on the router admin UI. Set the DMZ host to the static IP from [§4](#4-static-ip). Verify the router forwards all incoming connections (TCP, UDP, ICMP) to that IP.
 
-After this, the box is on the public internet. Re-run the external port tester from [§17](#17-network-security-verification) to confirm only the four expected ports answer.
+After this, the box is on the public internet. Re-run the external port tester from [§18](#18-network-security-verification) to confirm only the four expected ports answer.
 
 ---
 
@@ -474,20 +512,21 @@ After this, the box is on the public internet. Re-run the external port tester f
 │   ├── lib/
 │   │   ├── common.sh                          # shared helpers; sourced by all numbered scripts
 │   │   └── versions.sh                        # pinned versions of every package/asset (see §0a)
-│   ├── 01_set_static_ip.sh                    # §3
-│   ├── 02_validate_xorg_session.sh            # §4
-│   ├── 03_configure_gdm_xorg.sh               # §5
-│   ├── 04_disable_avahi.sh                    # §6
-│   ├── 05_configure_tmp_cleanup.sh            # §7
-│   ├── 06_install_openssh_server.sh           # §8
-│   ├── 07_install_nvidia_driver.sh            # §9
-│   ├── 08_install_cuda_toolkit.sh             # §10
-│   ├── 09_install_docker.sh                   # §11
-│   ├── 10_install_nvidia_container_toolkit.sh # §12
-│   ├── 11_install_rustdesk.sh                 # §13
-│   ├── 12_install_teamviewer.sh               # §14
-│   └── 13_install_developer_toolchain.sh      # §15
-├── network_security/                          # §17, audit and verify tools
+│   ├── 00_install_claude_code.sh              # §3
+│   ├── 01_set_static_ip.sh                    # §4
+│   ├── 02_validate_xorg_session.sh            # §5
+│   ├── 03_configure_gdm_xorg.sh               # §6
+│   ├── 04_disable_avahi.sh                    # §7
+│   ├── 05_configure_tmp_cleanup.sh            # §8
+│   ├── 06_install_openssh_server.sh           # §9
+│   ├── 07_install_nvidia_driver.sh            # §10
+│   ├── 08_install_cuda_toolkit.sh             # §11
+│   ├── 09_install_docker.sh                   # §12
+│   ├── 10_install_nvidia_container_toolkit.sh # §13
+│   ├── 11_install_rustdesk.sh                 # §14
+│   ├── 12_install_teamviewer.sh               # §15
+│   └── 13_install_developer_toolchain.sh      # §16
+├── network_security/                          # §18, audit and verify tools
 │   ├── README.md
 │   ├── verify_network_security.py
 │   ├── apply_vmware_firewall.py
