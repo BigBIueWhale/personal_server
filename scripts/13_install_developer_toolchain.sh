@@ -163,9 +163,18 @@ section "(d) apt update + install code (intentionally unpinned)"
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y code
 
+# Verify install via dpkg (works as root). The `code` binary itself refuses
+# to run as root without --no-sandbox, so we don't smoke-test it here as root.
+state="$(dpkg -l code 2>/dev/null | awk '/^.. +code / {print $1; exit}')"
+[ "$state" = "ii" ] || die "code package is not in installed state (got '$state')"
+dpkg -l code | awk '/^ii/{print $1, $2, $3}'
+
+# Run --version as the desktop user instead of root. VS Code rejects root by
+# design (Electron sandbox + Chromium); workaround flags exist but we never
+# want them on a real workstation.
 require_command code
-info "code --version:"
-code --version
+info "code --version (run as $TARGET_USER):"
+sudo -u "$TARGET_USER" code --version
 
 # ---------------------------------------------------------------------------
 # Done

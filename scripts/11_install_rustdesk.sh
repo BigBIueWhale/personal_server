@@ -85,7 +85,7 @@ apt-get install -y "$DEB"
 section "verification"
 
 # Confirm the package is in the 'ii' (installed) state at the right version.
-state="$(dpkg -l rustdesk 2>/dev/null | awk '/^.. rustdesk / {print $1; exit}')"
+state="$(dpkg -l rustdesk 2>/dev/null | awk '/^.. +rustdesk / {print $1; exit}')"
 [ "$state" = "ii" ] || die "rustdesk package is not in installed state (got '$state')"
 installed_version="$(dpkg -s rustdesk | awk '/^Version:/ {print $2}')"
 [ "$installed_version" = "$RUSTDESK_VERSION" ] \

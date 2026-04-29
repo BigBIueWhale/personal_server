@@ -68,7 +68,7 @@ apt-get install -y "$DEB"
 
 section "verification"
 
-state="$(dpkg -l teamviewer 2>/dev/null | awk '/^.. teamviewer / {print $1; exit}')"
+state="$(dpkg -l teamviewer 2>/dev/null | awk '/^.. +teamviewer / {print $1; exit}')"
 [ "$state" = "ii" ] || die "teamviewer package is not in installed state (got '$state')"
 installed_version="$(dpkg -s teamviewer | awk '/^Version:/ {print $2}')"
 [ "$installed_version" = "$TEAMVIEWER_VERSION" ] \
