@@ -20,9 +20,16 @@
 # Manual GUI steps after this script (cannot be automated):
 #   1. Launch TeamViewer from the Activities menu.
 #   2. Accept the EULA.
-#   3. Sign in (or create a TeamViewer account) and set a permanent password.
-#   4. Record your TeamViewer ID + password somewhere safe — without them,
-#      remote connections will not work.
+#   3. Extras -> Options -> General -> check "Start TeamViewer with system".
+#      Prompts once for sudo. The .deb postinst already enables
+#      teamviewerd.service for boot, but that alone is NOT sufficient — without
+#      this in-app toggle, remote connections fail after a reboot even though
+#      `systemctl is-enabled teamviewerd` reports `enabled`.
+#   4. Sign in to your TeamViewer account in the main window and grant Easy
+#      Access to this device. Easy Access binds the device to the account so
+#      it appears in your account's device list under its hostname — any
+#      TeamViewer client signed into the same account connects by clicking
+#      that entry, with no per-device password and no TeamViewer ID to type.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
@@ -94,7 +101,14 @@ Manual GUI steps (cannot be automated):
 
   1. Launch TeamViewer from the Activities menu.
   2. Accept the EULA.
-  3. Sign in (or create a TeamViewer account) and set a permanent password.
-  4. Record your TeamViewer ID and permanent password somewhere safe.
-     Without them, remote connections will not work.
+  3. Extras -> Options -> General -> check "Start TeamViewer with system."
+     TeamViewer prompts once for your sudo password. The .deb postinst
+     already enables teamviewerd.service for boot, but THAT ALONE IS NOT
+     ENOUGH — without this in-app toggle, remote connections fail after a
+     reboot even though `systemctl is-enabled teamviewerd` reports `enabled`.
+  4. Sign in to your TeamViewer account in the main window and grant Easy
+     Access to this device. Easy Access binds the device to the account so
+     it appears in your account's device list under its hostname — any
+     TeamViewer client signed into the same account connects by clicking
+     that entry, with no per-device password and no TeamViewer ID to type.
 MANUAL

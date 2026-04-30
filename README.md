@@ -381,10 +381,12 @@ After install, `teamviewerd` listens on `127.0.0.1:5939` only (localhost). TeamV
 
 ### Manual GUI steps after the script (cannot be automated)
 
-1. Launch TeamViewer from the Activities menu.
-2. Accept the EULA.
-3. Sign in (or create a TeamViewer account) and set a permanent password.
-4. Record your TeamViewer ID and permanent password somewhere safe.
+The `.deb` postinst enables `teamviewerd.service` for boot, but that alone is **not** enough — without the in-app autostart toggle below, `systemctl is-enabled teamviewerd` will happily report `enabled` while remote connections still fail after every reboot. Do all four.
+
+1. **Launch TeamViewer** from the Activities menu.
+2. **Accept the EULA.**
+3. **Extras → Options → General → check "Start TeamViewer with system."** TeamViewer prompts once for your sudo password and finishes wiring autostart end-to-end. This is the step that actually makes the box reachable after a reboot — the `.deb`'s `systemctl enable` is a necessary precondition, not a sufficient one.
+4. **Sign in to your TeamViewer account** in the main window and **grant Easy Access** to this device. Easy Access binds the device to the account, so it appears in your account's device list under its hostname — any TeamViewer client signed into the same account connects by clicking that entry, with no per-device password and no TeamViewer ID to type. (A separate permanent password under Settings → Security is the alternative path; not used on this box, since I always connect from clients signed into my own account.)
 
 I keep both RustDesk and TeamViewer installed on the same box — belt and suspenders. They use different cloud infrastructure, so when one of them has an outage I still have remote access via the other.
 
