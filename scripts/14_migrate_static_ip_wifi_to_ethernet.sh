@@ -51,6 +51,13 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
 
+# common.sh enables `set -Eeuo pipefail`. We disable -E here so the ERR trap
+# below does NOT propagate into command substitutions: a failing pipeline
+# inside $(...) would otherwise fire rollback() once in the subshell (mutating
+# real state) and again when the parent sees the failed cmdsub. With -E off,
+# the trap fires once, in the main shell — which is what we want.
+set +E
+
 NM_STATE_FILE=/var/lib/NetworkManager/NetworkManager.state
 
 # -----------------------------------------------------------------------------
@@ -114,39 +121,60 @@ ETH_CON=""
 WIFI_DNS_ORIG=""
 
 rollback() {
-    # Disarm ERR inside rollback to avoid recursion if something in here fails.
+    # Disarm ERR and relax -e: rollback proceeds best-effort and surfaces
+    # failures of critical steps explicitly rather than silently exiting.
     trap - ERR
+    set +e
 
     [ "$ROLLBACK_NEEDED" = "1" ] || return 0
     [ -n "$WIFI_CON" ] && [ -n "$ETH_CON" ] || return 0
 
     warn "rolling back to original state (Wi-Fi static $TARGET_IP, Ethernet DHCP)"
 
+    # Restore both profiles verbatim from values captured in pre-flight.
+    # WIFI_DNS_ORIG holds the user's original DNS exactly — including the
+    # empty case (passing "" to ipv4.dns clears the field, which is faithful).
     nmcli connection modify "$ETH_CON" \
         ipv4.method auto \
         ipv4.addresses "" \
         ipv4.gateway "" \
-        ipv4.dns "" 2>/dev/null || true
+        ipv4.dns "" 2>/dev/null
 
     nmcli connection modify "$WIFI_CON" \
         ipv4.method manual \
         ipv4.addresses "$TARGET_IP/24" \
         ipv4.gateway "$GATEWAY" \
-        ipv4.dns "${WIFI_DNS_ORIG:-$GATEWAY 8.8.8.8}" 2>/dev/null || true
+        ipv4.dns "$WIFI_DNS_ORIG" 2>/dev/null
 
     # Cycle Ethernet first so it drops any half-applied static; then cycle
     # Wi-Fi so it re-claims the static IP. Never both holding the IP at once.
-    nmcli connection down "$ETH_CON"  >/dev/null 2>&1 || true
-    sleep 1
-    nmcli connection up   "$ETH_CON"  >/dev/null 2>&1 || true
+    # Each `up` is checked explicitly: a silent failure would let us print
+    # "rollback complete" while the system actually has no connectivity.
+    local rollback_ok=1
 
-    nmcli connection down "$WIFI_CON" >/dev/null 2>&1 || true
+    nmcli connection down "$ETH_CON" >/dev/null 2>&1
     sleep 1
-    nmcli connection up   "$WIFI_CON" >/dev/null 2>&1 || true
+    if ! nmcli connection up "$ETH_CON" >/dev/null 2>&1; then
+        rollback_ok=0
+        warn "  Ethernet ('$ETH_CON') did not come up — recover with: sudo nmcli connection up '$ETH_CON'"
+    fi
+
+    nmcli connection down "$WIFI_CON" >/dev/null 2>&1
+    sleep 1
+    if ! nmcli connection up "$WIFI_CON" >/dev/null 2>&1; then
+        rollback_ok=0
+        warn "  Wi-Fi ('$WIFI_CON') did not come up — recover with: sudo nmcli connection up '$WIFI_CON'"
+    fi
 
     sleep 2
-    warn "rollback finished. State after rollback:"
-    ip -br -4 addr | grep -v -E '^(lo|docker|veth)' || true
+    if [ "$rollback_ok" = "1" ]; then
+        warn "rollback complete — system restored to original state"
+    else
+        warn "ROLLBACK INCOMPLETE — see [warn] lines above for manual recovery"
+    fi
+
+    warn "post-rollback state:"
+    ip -br -4 addr | grep -v -E '^(lo|docker|veth)'
     ip route show
 }
 
@@ -158,10 +186,15 @@ die() { printf '[fatal] %s\n' "$*" >&2; abort; }
 trap 'echo "[fatal] command failed at line $LINENO" >&2; abort' ERR
 
 # Poll for an IPv4 on $1 within $2 seconds. Echoes the IP, returns 0/1.
+# Skips link-local 169.254/16 — those mean DHCP failed and NM fell back to
+# autoconf, which is NOT "got an IP" for our purposes.
 wait_for_ipv4() {
     local iface="$1" timeout="${2:-20}" i out
     for i in $(seq 1 "$timeout"); do
-        out=$(ip -4 -o addr show "$iface" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1) || out=""
+        out=$(ip -4 -o addr show "$iface" 2>/dev/null \
+              | awk '{print $4}' | cut -d/ -f1 \
+              | grep -v '^169\.254\.' \
+              | head -1) || out=""
         if [ -n "$out" ]; then
             printf '%s' "$out"
             return 0
@@ -309,8 +342,10 @@ fi
 [ "$CURR_TARGET_IFACE" = "$WIFI_IFACE" ] \
     || die "target IP $TARGET_IP is currently on '${CURR_TARGET_IFACE:-<no interface>}', expected '$WIFI_IFACE'"
 
-# 1.17 Default route via the gateway exists.
-ip route show default | grep -qE "via $GATEWAY( |$)" \
+# 1.17 Default route via the gateway exists. (-F so dots in $GATEWAY aren't
+#      interpreted as regex any-char; the trailing space is always present in
+#      `ip route` output between the gateway IP and the next field.)
+ip route show default | grep -qF "via $GATEWAY " \
     || die "no default route via $GATEWAY in current routing table"
 
 # 1.18 Baseline connectivity: gateway pings, internet reaches.
