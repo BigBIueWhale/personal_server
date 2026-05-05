@@ -354,7 +354,7 @@ If you ever read documentation that talks about "the RustDesk server," you almos
 
 ### Manual GUI steps after the script (cannot be automated)
 
-These are the in-app settings that actually flip the listener on and harden the session. **Do all four** — without them, item #1 above is installed but inert.
+These are the in-app settings that actually flip the listener on and harden the session. **Do all five** — without them, item #1 above is installed but inert.
 
 1. **Launch RustDesk** from the Activities menu (it does not auto-start — the supervisor service launches it, but the first time it needs the GUI to write its config).
 2. **Settings → Network → enable "Direct IP Access"**. This is the toggle that makes the client process actually bind `21118/tcp` and `21119/udp` to listen for incoming connections. Without it, the client only initiates outgoing connections via the public RustDesk relay, which is the opposite of what a personal *server* wants. After flipping it, verify the listener is up:
@@ -366,6 +366,7 @@ These are the in-app settings that actually flip the listener on and harden the 
 
 3. **Settings → Display → uncheck "Hardware Codec"**. With NVENC enabled, RustDesk holds ~500 MB of VRAM open for the duration of every active remote session (regardless of whether you're encoding anything). Disabling it forces software encoding, frees that VRAM for compute workloads, and on this CPU is fast enough you won't notice the framerate. The trade is worth it on this hardware.
 4. **Set a permanent password for unattended access.** RustDesk's main window shows an auto-generated *temporary* password that rotates and is therefore useless for unattended remote-desktop. In the main window, click the menu next to the password field (or Settings → Security) and pick "Set permanent password." Pick something strong; the box is DMZ-exposed, this password and the SSH password are the two things gating any inbound session.
+5. **Settings → Security → Permissions** → set the dropdown to **"Full access"**. Otherwise the default profile blocks operations like file transfer, clipboard sync, and audio per connection — fine for shared boxes, wrong default for a personal server you reach yourself.
 
 ---
 
