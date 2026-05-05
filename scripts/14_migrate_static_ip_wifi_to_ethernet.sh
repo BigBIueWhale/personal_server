@@ -91,6 +91,12 @@ esac
 [ "$#" -eq 1 ] || { print_usage >&2; die "exactly one positional argument required"; }
 TARGET_IP="$1"
 
+# Root check fires here — before IPv4 syntactic validation — so that running
+# without sudo reports the actual blocker ("must be run as root") rather than
+# letting the user fix an IP-format error only to discover the sudo issue
+# afterwards. Matches the order used in 01_set_static_ip.sh.
+require_root
+
 # -----------------------------------------------------------------------------
 # Validate the target IPv4 syntactically
 # -----------------------------------------------------------------------------
@@ -119,6 +125,7 @@ ROLLBACK_NEEDED=0
 WIFI_CON=""
 ETH_CON=""
 WIFI_DNS_ORIG=""
+ETH_MAYFAIL_ORIG=""
 
 rollback() {
     # Disarm ERR and relax -e: rollback proceeds best-effort and surfaces
@@ -134,11 +141,15 @@ rollback() {
     # Restore both profiles verbatim from values captured in pre-flight.
     # WIFI_DNS_ORIG holds the user's original DNS exactly — including the
     # empty case (passing "" to ipv4.dns clears the field, which is faithful).
+    # ETH_MAYFAIL_ORIG restores ipv4.may-fail (we set it to 'no' in phase 2 so
+    # IPv4 method completion gates the ACTIVATED transition; rollback should
+    # leave the DHCP profile with whatever the user originally had).
     nmcli connection modify "$ETH_CON" \
         ipv4.method auto \
         ipv4.addresses "" \
         ipv4.gateway "" \
-        ipv4.dns "" 2>/dev/null
+        ipv4.dns "" \
+        ipv4.may-fail "$ETH_MAYFAIL_ORIG" 2>/dev/null
 
     nmcli connection modify "$WIFI_CON" \
         ipv4.method manual \
@@ -229,10 +240,8 @@ iface_holding_ip() {
 
 section "phase 1: pre-flight validation"
 
-# 1.1 Root.
-require_root
-
-# 1.2 Required commands.
+# 1.1 Required commands. (Root was already enforced earlier, before any
+#     argument validation, so we don't repeat the check here.)
 require_command nmcli
 require_command ip
 require_command ping
@@ -241,24 +250,24 @@ require_command grep
 require_command cut
 require_command systemctl
 
-# 1.3 Distribution: Ubuntu noble (matches the rest of this repo).
+# 1.2 Distribution: Ubuntu noble (matches the rest of this repo).
 require_ubuntu_noble
 
-# 1.4 NetworkManager active.
+# 1.3 NetworkManager active.
 require_systemd_active NetworkManager
 
-# 1.5 No conflicting network manager.
+# 1.4 No conflicting network manager.
 if systemctl is-active --quiet systemd-networkd; then
     die "systemd-networkd is active alongside NetworkManager — this script requires NetworkManager to be the sole network manager"
 fi
 
-# 1.6 Exactly one Wi-Fi device (filter type=wifi to exclude wifi-p2p siblings).
+# 1.5 Exactly one Wi-Fi device (filter type=wifi to exclude wifi-p2p siblings).
 mapfile -t WIFI_DEVS < <(nmcli -t -f DEVICE,TYPE device status | awk -F: '$2 == "wifi" {print $1}')
 [ "${#WIFI_DEVS[@]}" -eq 1 ] \
     || die "expected exactly one Wi-Fi device, found ${#WIFI_DEVS[@]}: ${WIFI_DEVS[*]:-<none>}"
 WIFI_IFACE="${WIFI_DEVS[0]}"
 
-# 1.7 Exactly one HARDWARE Ethernet device (exclude veth pairs and other virtual
+# 1.6 Exactly one HARDWARE Ethernet device (exclude veth pairs and other virtual
 #     802-3-ethernet entries; real NICs back onto a /sys/class/net/<iface>/device).
 mapfile -t ETH_DEVS_ALL < <(nmcli -t -f DEVICE,TYPE device status | awk -F: '$2 == "ethernet" {print $1}')
 ETH_DEVS_HW=()
@@ -269,14 +278,14 @@ done
     || die "expected exactly one hardware Ethernet device, found ${#ETH_DEVS_HW[@]}: ${ETH_DEVS_HW[*]:-<none>}"
 ETH_IFACE="${ETH_DEVS_HW[0]}"
 
-# 1.8 Exactly one active wireless connection.
+# 1.7 Exactly one active wireless connection.
 mapfile -t WIFI_ACTIVE < <(nmcli -t -f NAME,TYPE,STATE connection show --active \
     | awk -F: '$2 == "802-11-wireless" && $3 == "activated" {print $1}')
 [ "${#WIFI_ACTIVE[@]}" -eq 1 ] \
     || die "expected exactly one active wireless connection, found ${#WIFI_ACTIVE[@]}: ${WIFI_ACTIVE[*]:-<none>}"
 WIFI_CON="${WIFI_ACTIVE[0]}"
 
-# 1.9 Exactly one active wired connection (802-3-ethernet specifically — excludes
+# 1.8 Exactly one active wired connection (802-3-ethernet specifically — excludes
 #     bridges, vpn, tun, etc.).
 mapfile -t ETH_ACTIVE < <(nmcli -t -f NAME,TYPE,STATE connection show --active \
     | awk -F: '$2 == "802-3-ethernet" && $3 == "activated" {print $1}')
@@ -284,7 +293,7 @@ mapfile -t ETH_ACTIVE < <(nmcli -t -f NAME,TYPE,STATE connection show --active \
     || die "expected exactly one active wired connection, found ${#ETH_ACTIVE[@]}: ${ETH_ACTIVE[*]:-<none>}"
 ETH_CON="${ETH_ACTIVE[0]}"
 
-# 1.10 Active connections must be bound to the expected hardware devices.
+# 1.9 Active connections must be bound to the expected hardware devices.
 WIFI_CON_DEV=$(nmcli -t -f GENERAL.DEVICES connection show "$WIFI_CON" | head -1 | cut -d: -f2-)
 ETH_CON_DEV=$( nmcli -t -f GENERAL.DEVICES connection show "$ETH_CON"  | head -1 | cut -d: -f2-)
 [ "$WIFI_CON_DEV" = "$WIFI_IFACE" ] \
@@ -292,13 +301,13 @@ ETH_CON_DEV=$( nmcli -t -f GENERAL.DEVICES connection show "$ETH_CON"  | head -1
 [ "$ETH_CON_DEV" = "$ETH_IFACE" ] \
     || die "wired connection '$ETH_CON' is on '$ETH_CON_DEV', not the Ethernet device '$ETH_IFACE'"
 
-# 1.11 Carrier on both interfaces.
+# 1.10 Carrier on both interfaces.
 [ "$(cat "/sys/class/net/$WIFI_IFACE/carrier" 2>/dev/null)" = "1" ] \
     || die "$WIFI_IFACE has no carrier (Wi-Fi not associated with an AP)"
 [ "$(cat "/sys/class/net/$ETH_IFACE/carrier"  2>/dev/null)" = "1" ] \
     || die "$ETH_IFACE has no carrier — is the Ethernet cable plugged in?"
 
-# 1.12 Wi-Fi profile is exactly the expected static config.
+# 1.11 Wi-Fi profile is exactly the expected static config.
 WIFI_METHOD=$(nmcli -t -f ipv4.method    connection show "$WIFI_CON" | cut -d: -f2-)
 WIFI_ADDR=$(  nmcli -t -f ipv4.addresses connection show "$WIFI_CON" | cut -d: -f2-)
 WIFI_GW=$(    nmcli -t -f ipv4.gateway   connection show "$WIFI_CON" | cut -d: -f2-)
@@ -312,29 +321,36 @@ WIFI_DNS_ORIG=$(nmcli -t -f ipv4.dns     connection show "$WIFI_CON" | cut -d: -
 
 GATEWAY="$WIFI_GW"
 
-# 1.13 Gateway and target IP on same /24.
+# 1.12 Gateway and target IP on same /24.
 gw_prefix=$(    echo "$GATEWAY"   | awk -F. '{print $1"."$2"."$3}')
 target_prefix=$(echo "$TARGET_IP" | awk -F. '{print $1"."$2"."$3}')
 [ "$gw_prefix" = "$target_prefix" ] \
     || die "gateway $GATEWAY not on same /24 as target $TARGET_IP"
 
-# 1.14 Ethernet profile is exactly DHCP (no leftover static fields).
-ETH_METHOD=$(nmcli -t -f ipv4.method    connection show "$ETH_CON" | cut -d: -f2-)
-ETH_ADDR=$(  nmcli -t -f ipv4.addresses connection show "$ETH_CON" | cut -d: -f2-)
-ETH_GW=$(    nmcli -t -f ipv4.gateway   connection show "$ETH_CON" | cut -d: -f2-)
+# 1.13 Ethernet profile is exactly DHCP (no leftover static fields). Also
+#      capture ipv4.may-fail so rollback can restore it byte-for-byte (we
+#      override it to 'no' in phase 2 — see comment there).
+ETH_METHOD=$(  nmcli -t -f ipv4.method    connection show "$ETH_CON" | cut -d: -f2-)
+ETH_ADDR=$(    nmcli -t -f ipv4.addresses connection show "$ETH_CON" | cut -d: -f2-)
+ETH_GW=$(      nmcli -t -f ipv4.gateway   connection show "$ETH_CON" | cut -d: -f2-)
+ETH_MAYFAIL_ORIG=$(nmcli -t -f ipv4.may-fail connection show "$ETH_CON" | cut -d: -f2-)
 [ "$ETH_METHOD" = "auto" ] \
     || die "Ethernet profile '$ETH_CON' has ipv4.method='$ETH_METHOD', expected 'auto' (DHCP)"
 [ -z "$ETH_ADDR" ] \
     || die "Ethernet profile '$ETH_CON' has stray ipv4.addresses='$ETH_ADDR' (expected empty for DHCP profile)"
 [ -z "$ETH_GW" ] \
     || die "Ethernet profile '$ETH_CON' has stray ipv4.gateway='$ETH_GW' (expected empty for DHCP profile)"
+# ipv4.may-fail is a tristate-as-string in nmcli output ("yes" or "no"); a
+# missing value would mean we're talking to an nmcli we don't understand.
+[ -n "$ETH_MAYFAIL_ORIG" ] \
+    || die "could not read ipv4.may-fail from Ethernet profile '$ETH_CON' — refusing to proceed without a value to restore on rollback"
 
-# 1.15 Ethernet currently has a DHCP-assigned IPv4.
+# 1.14 Ethernet currently has a DHCP-assigned IPv4.
 ETH_CURR_IP=$(ip -4 -o addr show "$ETH_IFACE" | awk '{print $4}' | cut -d/ -f1 | head -1)
 [ -n "$ETH_CURR_IP" ] \
     || die "$ETH_IFACE has no IPv4 — DHCP not currently working"
 
-# 1.16 The target IP is currently held only by the Wi-Fi interface.
+# 1.15 The target IP is currently held only by the Wi-Fi interface.
 CURR_TARGET_IFACE=""
 if ! CURR_TARGET_IFACE=$(iface_holding_ip "$TARGET_IP"); then
     die "target IP $TARGET_IP is held by multiple interfaces simultaneously — refuse to proceed"
@@ -342,20 +358,20 @@ fi
 [ "$CURR_TARGET_IFACE" = "$WIFI_IFACE" ] \
     || die "target IP $TARGET_IP is currently on '${CURR_TARGET_IFACE:-<no interface>}', expected '$WIFI_IFACE'"
 
-# 1.17 Default route via the gateway exists. (-F so dots in $GATEWAY aren't
+# 1.16 Default route via the gateway exists. (-F so dots in $GATEWAY aren't
 #      interpreted as regex any-char; the trailing space is always present in
 #      `ip route` output between the gateway IP and the next field.)
 ip route show default | grep -qF "via $GATEWAY " \
     || die "no default route via $GATEWAY in current routing table"
 
-# 1.18 Baseline connectivity: gateway pings, internet reaches.
+# 1.17 Baseline connectivity: gateway pings, internet reaches.
 ping -c 1 -W 2 "$GATEWAY" >/dev/null 2>&1 \
     || die "gateway $GATEWAY does not respond to ping right now (baseline broken)"
 ping -c 1 -W 2 1.1.1.1 >/dev/null 2>&1 \
     || ping -c 1 -W 2 8.8.8.8 >/dev/null 2>&1 \
     || die "no outbound internet right now (baseline broken; tried 1.1.1.1 and 8.8.8.8)"
 
-# 1.19 NM state file present and currently shows wifi-enabled (so we have
+# 1.18 NM state file present and currently shows wifi-enabled (so we have
 #      something to flip and a way to verify persistence afterward).
 [ -f "$NM_STATE_FILE" ] \
     || die "$NM_STATE_FILE missing — cannot verify wifi-disable persistence"
@@ -384,12 +400,32 @@ nmcli connection modify "$WIFI_CON" \
     ipv4.dns ""
 info "Wi-Fi profile staged: ipv4.method=auto"
 
+# ipv4.may-fail=no on the Ethernet profile is load-bearing.
+#
+# By default ipv4.may-fail=yes, which means NetworkManager flips the device to
+# the ACTIVATED state as soon as EITHER address family (v4 or v6) finishes its
+# IP method — not when both do. So `nmcli connection up` can return success
+# while the IPv4 default route has not yet been installed in the kernel: the
+# v6 method finished first, ACTIVATED was signalled, nmcli returned, and v4
+# (including the static default route via $GATEWAY) is still being applied
+# asynchronously. With v4 not yet in the FIB, `ip route get 1.1.1.1` falls
+# through to whatever other default route exists — in our case the cycled
+# Wi-Fi profile's freshly-acquired DHCP route on metric 600 — and the post-
+# swap route assertion in phase 5 incorrectly fires. Setting may-fail=no
+# forces ACTIVATED to wait for v4 specifically, which closes that window.
+#
+# (See NetworkManager-wait-online(8): "by default, NetworkManager considers
+# the device as fully activated already when only one of the address families
+# is ready." Phase 5 still polls the kernel FIB defensively because the
+# `Default` D-Bus property — i.e. which Active Connection currently OWNS the
+# default route — is updated by nm-policy *after* ACTIVATED.)
 nmcli connection modify "$ETH_CON" \
-    ipv4.method manual \
+    ipv4.method   manual \
     ipv4.addresses "$TARGET_IP/24" \
     ipv4.gateway  "$GATEWAY" \
-    ipv4.dns      "$GATEWAY 8.8.8.8"
-info "Ethernet profile staged: ipv4.method=manual $TARGET_IP/24 gw=$GATEWAY"
+    ipv4.dns      "$GATEWAY 8.8.8.8" \
+    ipv4.may-fail no
+info "Ethernet profile staged: ipv4.method=manual $TARGET_IP/24 gw=$GATEWAY may-fail=no"
 
 # =============================================================================
 # PHASE 3 — APPLY: cycle Wi-Fi (releases target IP, gets DHCP)
@@ -400,8 +436,12 @@ section "phase 3: cycle Wi-Fi (releases $TARGET_IP, gets DHCP)"
 
 nmcli connection down "$WIFI_CON" >/dev/null 2>&1 || true
 sleep 2
-nmcli connection up   "$WIFI_CON" >/dev/null 2>&1 \
-    || die "'nmcli connection up $WIFI_CON' failed"
+# -w 60: explicit timeout. nmcli's documented default for `connection up` is
+# 90s on this version; we cap a bit shorter so a stuck Wi-Fi bring-up doesn't
+# leave the user staring at a silent shell, while still giving DHCP plenty of
+# time to lease.
+nmcli -w 60 connection up "$WIFI_CON" >/dev/null 2>&1 \
+    || die "'nmcli -w 60 connection up $WIFI_CON' failed"
 
 NEW_WIFI_IP=$(wait_for_ipv4 "$WIFI_IFACE" 20) \
     || die "Wi-Fi did not get an IPv4 within 20s after cycling — DHCP issue?"
@@ -419,8 +459,13 @@ section "phase 4: cycle Ethernet (claims static $TARGET_IP)"
 
 nmcli connection down "$ETH_CON" >/dev/null 2>&1 || true
 sleep 2
-nmcli connection up   "$ETH_CON" >/dev/null 2>&1 \
-    || die "'nmcli connection up $ETH_CON' failed"
+# -w 60: with ipv4.may-fail=no on this profile (set in phase 2), `nmcli
+# connection up` blocks until the IPv4 method has fully completed — i.e.
+# until the static address AND default route are installed in the kernel,
+# not just until v6 wins the dual-stack race. 60s is comfortably above the
+# fraction of a second a static-method bring-up actually needs.
+nmcli -w 60 connection up "$ETH_CON" >/dev/null 2>&1 \
+    || die "'nmcli -w 60 connection up $ETH_CON' failed"
 
 NEW_ETH_IP=$(wait_for_ipv4 "$ETH_IFACE" 15) \
     || die "Ethernet did not get an IPv4 within 15s after cycling"
@@ -445,9 +490,33 @@ fi
 info "$TARGET_IP confirmed only on $ETH_IFACE"
 
 # 5.2  Kernel routes outbound (1.1.1.1) via Ethernet.
-ROUTE_DEV=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev") {print $(i+1); exit}}')
+#
+# Polled, not one-shot. ipv4.may-fail=no (phase 2) closes the dual-stack
+# early-completion race, but two more sources of lag still exist between
+# `nmcli connection up` returning and `ip route get` agreeing that Eth is
+# the preferred outbound interface:
+#
+#   (a) NM's policy engine (nm-policy.c::get_best_active_connection) decides
+#       which active connection currently OWNS the default route AFTER the
+#       device reaches ACTIVATED, when the set of active connections /
+#       metrics changes. The `Default` D-Bus property on Connection.Active
+#       is updated by that policy pass — not synchronously at ACTIVATED.
+#   (b) Kernel-FIB visibility of routes installed by NM is itself eventually-
+#       consistent in places (NM has a workaround, commit f8b2cadf, for
+#       missing RTM_DELROUTE events).
+#
+# 10 seconds is empirically generous: in normal cases the first iteration
+# already passes; the loop just exists so we don't fail the swap on a sub-
+# second timing artefact.
+ROUTE_DEV=""
+for _ in $(seq 1 10); do
+    ROUTE_DEV=$(ip -4 route get 1.1.1.1 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if($i=="dev") {print $(i+1); exit}}')
+    [ "$ROUTE_DEV" = "$ETH_IFACE" ] && break
+    sleep 1
+done
 [ "$ROUTE_DEV" = "$ETH_IFACE" ] \
-    || die "kernel routes 1.1.1.1 via '$ROUTE_DEV', expected '$ETH_IFACE'"
+    || die "kernel routes 1.1.1.1 via '${ROUTE_DEV:-<none>}', expected '$ETH_IFACE' (waited 10s after ACTIVATED)"
 info "kernel routes 1.1.1.1 via $ETH_IFACE"
 
 # 5.3  Gateway reachable specifically via Ethernet.
