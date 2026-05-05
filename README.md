@@ -185,6 +185,26 @@ After it succeeds, **update the router's DMZ target on the router admin UI** to 
 
 ---
 
+## 4a. Switch to Ethernet (optional)
+
+**Optional.** Only if you'd rather run this box on Ethernet than Wi-Fi. The static IP stays the same — the router's DMZ rule from [§19](#19-router-dmz-configuration) does not need to change. After it runs, the box is reachable on Ethernet at the same IP and Wi-Fi is off (recoverable in one command, see below).
+
+```bash
+sudo bash scripts/14_migrate_static_ip_wifi_to_ethernet.sh 10.0.0.199
+```
+
+Reference: [`scripts/14_migrate_static_ip_wifi_to_ethernet.sh`](./scripts/14_migrate_static_ip_wifi_to_ethernet.sh). Atomically moves the static IP from Wi-Fi to Ethernet, sets the Wi-Fi profile back to DHCP, and disables the Wi-Fi radio. Heavily opinionated: refuses to run unless the system is in exactly the expected post-§4 state — Ubuntu noble, NetworkManager only (no rival `systemd-networkd`), exactly one Wi-Fi device and one *hardware* Ethernet device (Docker veth pairs filtered out), exactly one active wireless and one active wired connection bound to those devices, the Wi-Fi profile carrying `ipv4.method=manual` with the supplied IP, the Ethernet profile carrying `ipv4.method=auto` with a current DHCP lease and no leftover static fields, the target IP currently held only by Wi-Fi, and the default route reachable. After validation, profile changes are staged, Wi-Fi is cycled to DHCP, Ethernet is cycled to claim the static IP, and the kernel routing path and gateway/internet pings are re-checked specifically bound to the Ethernet interface. Any failure during the swap triggers automatic rollback to the original state (Wi-Fi static + Ethernet DHCP). Only after the swap verifies end-to-end does the script run `nmcli radio wifi off`, which writes `WirelessEnabled=false` to `/var/lib/NetworkManager/NetworkManager.state` — survives reboots. The wifi-disable step itself is warn-only by design: once the swap is committed, radio-toggle anomalies do not fail the script.
+
+To reverse — turn Wi-Fi back on at any time, with no other changes:
+
+```bash
+sudo nmcli radio wifi on
+```
+
+The Wi-Fi profile is preserved on disk (rewritten to DHCP by the swap), so Wi-Fi auto-ups at a DHCP-assigned address — not the static IP, which is now Ethernet's.
+
+---
+
 ## 5. Validate Xorg session
 
 Before running any other script, confirm you are in an Xorg session:
@@ -527,7 +547,8 @@ After this, the box is on the public internet. Re-run the external port tester f
 │   ├── 10_install_nvidia_container_toolkit.sh # §13
 │   ├── 11_install_rustdesk.sh                 # §14
 │   ├── 12_install_teamviewer.sh               # §15
-│   └── 13_install_developer_toolchain.sh      # §16
+│   ├── 13_install_developer_toolchain.sh      # §16
+│   └── 14_migrate_static_ip_wifi_to_ethernet.sh # §4a (optional)
 ├── network_security/                          # §18, audit and verify tools
 │   ├── README.md
 │   ├── verify_network_security.py
