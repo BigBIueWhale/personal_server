@@ -353,8 +353,12 @@ against actual file contents rather than memory of "typical" patterns.
 
 if [ -e "$CLAUDEMD" ]; then
     [ -f "$CLAUDEMD" ] || die "$CLAUDEMD exists but is not a regular file — refusing to touch"
-    EXISTING_MD="$(cat -- "$CLAUDEMD")"
-    if [ "$EXISTING_MD" = "$CLAUDEMD_CONTENT" ]; then
+    # Byte-exact compare against the same bytes the else branch would write.
+    # We can't use `[ "$(cat ...)" = "$CLAUDEMD_CONTENT" ]` because $(...)
+    # unconditionally strips trailing newlines from cat's output, so the
+    # bash-string comparison would be 334-vs-335 (one stripped \n) and
+    # would *always* refuse on re-run even when the file is byte-identical.
+    if printf '%s' "$CLAUDEMD_CONTENT" | cmp -s - "$CLAUDEMD"; then
         info "$CLAUDEMD already present and matches expected content — no change"
     else
         die "$(printf 'FATAL: %s already exists with different content.\nRefusing to overwrite. If the existing content is your own customization,\nleave it. If it is stale and you want this script to manage it again,\ndelete the file and re-run.' "$CLAUDEMD")"
