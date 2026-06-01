@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/00_install_claude_code.sh — install Claude Code CLI and configure
-# max-effort defaults for Opus 4.7 (1M).
+# max-effort defaults for Opus 4.8 (1M).
 #
 # WHY THIS IS THE FIRST SCRIPT
 # ----------------------------
@@ -20,7 +20,7 @@
 #       if any `export PATH=…` line already references `.local/bin`.
 #   (c) bashrc env block: append a marker-delimited block to
 #       /home/<user>/.bashrc with three env exports that lock in maximum
-#       thinking effort on Opus 4.7 (1M). Marker text is fixed and the
+#       thinking effort on Opus 4.8 (1M). Marker text is fixed and the
 #       block is verified byte-for-byte on re-run.
 #   (d) settings.json: merge five managed keys into /home/<user>/
 #       .claude/settings.json. Pre-existing user-set keys are preserved.
@@ -147,21 +147,26 @@ fi
 # ---------------------------------------------------------------------------
 #
 # Why each export — recap (full justification is in the repo's commit
-# history; quoting is verified against Anthropic's docs as of 2026-04):
+# history; quoting is verified against Anthropic's docs as of 2026-06):
 #
 #   CLAUDE_CODE_EFFORT_LEVEL=max
 #       Only persistent path to 'max'. The env var is highest in the
 #       precedence chain (env > skill/subagent frontmatter > /effort >
 #       settings.json effortLevel > model default). settings.json's
 #       `effortLevel` field cannot hold "max" — the schema enum drops it
-#       (anthropics/claude-code GitHub issue #50557).
+#       (anthropics/claude-code GitHub issue #50557, closed as "not
+#       planned" — this is the intended design, not a bug awaiting fix).
+#       Extra-important on Opus 4.8: the model default is `high` (down
+#       from `xhigh` on Opus 4.7), so without this env var Claude Code
+#       silently drops two notches on the first 4.8 session.
 #
-#   ANTHROPIC_MODEL='claude-opus-4-7[1m]'
+#   ANTHROPIC_MODEL='claude-opus-4-8[1m]'
 #       Pin the exact model + 1M context. Immune to the `opus` alias
-#       remapping to a future model.
+#       remapping to a future model (the alias currently resolves to
+#       Opus 4.8 on the Anthropic API and will move when 4.9 ships).
 #
 #   CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
-#       Raise the per-response output ceiling to Opus 4.7's max so that
+#       Raise the per-response output ceiling to Opus 4.8's max so that
 #       adaptive thinking + the answer have room to breathe (they share
 #       this budget).
 #
@@ -177,13 +182,13 @@ MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
 # refuses to touch the file.
 read -r -d '' EXPECTED_BLOCK <<EOF || true
 $MARKER_BEGIN
-# Lock in maximum thinking effort for Opus 4.7 (1M context).
+# Lock in maximum thinking effort for Opus 4.8 (1M context).
 # DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
 # will refuse to run if anything inside the markers has been changed.
 # To customize, delete the entire block (markers and all), edit the script
 # to match what you want, then re-run.
 export CLAUDE_CODE_EFFORT_LEVEL=max
-export ANTHROPIC_MODEL='claude-opus-4-7[1m]'
+export ANTHROPIC_MODEL='claude-opus-4-8[1m]'
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 $MARKER_END
 EOF
@@ -221,9 +226,10 @@ fi
 # ---------------------------------------------------------------------------
 #
 # Managed keys (top-level):
-#     model                  = "claude-opus-4-7[1m]"
+#     model                  = "claude-opus-4-8[1m]"
 #     effortLevel            = "xhigh"          (fallback: schema drops "max")
-#     showThinkingSummaries  = true             (4.7 hides thinking by default)
+#     showThinkingSummaries  = true             (4.8, like 4.7, defaults
+#                                                thinking.display to "omitted")
 #
 # Managed keys (under env): duplicates of the bashrc exports, so any
 # launch path that doesn't source .bashrc (GNOME/KDE desktop launchers,
@@ -259,7 +265,7 @@ import sys
 src, dst = sys.argv[1], sys.argv[2]
 
 WANT = {
-    "model": "claude-opus-4-7[1m]",
+    "model": "claude-opus-4-8[1m]",
     "effortLevel": "xhigh",
     "showThinkingSummaries": True,
 }
@@ -331,7 +337,7 @@ cat -- "$SETTINGS"
 # (e) ~/.claude/CLAUDE.md adaptive-thinking nudge
 # ---------------------------------------------------------------------------
 #
-# Opus 4.7 always uses adaptive reasoning — there is no API switch to force
+# Opus 4.8 always uses adaptive reasoning — there is no API switch to force
 # fixed-large thinking. The only documented way to bias the per-turn
 # adaptive trigger upward is system-prompt / CLAUDE.md guidance:
 # https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
