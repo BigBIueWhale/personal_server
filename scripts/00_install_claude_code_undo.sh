@@ -55,20 +55,20 @@
 # LEVEL=max, env.CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000) and the rest of
 # the marker-block prose are constant across versions.
 #
-# This script accepts the model string as an optional positional argument
-# so you can undo a state installed by an older version of the install
-# script. The default matches the install script at the current commit.
-#
-# To undo the install script's CURRENT state:        (default)
-#     bash scripts/00_install_claude_code_undo.sh
-# To undo the state from Opus 4.7 (pre-4.8 upgrade):
-#     bash scripts/00_install_claude_code_undo.sh 'claude-opus-4-7[1m]'
-#
-# Whatever model you pass, the on-disk state must match it exactly or the
-# script refuses.
+# This script REQUIRES the model string as its single positional argument
+# — no default, no silent fallback. You must pass the exact ANTHROPIC_
+# MODEL value that's currently on disk, e.g. 'claude-opus-4-8[1m]' or
+# 'claude-opus-4-7[1m]'. If the on-disk state doesn't match the model
+# you pass, the script refuses. If you forget to pass it, or pass the
+# wrong number of args, or pass anything beginning with '-', the script
+# refuses with a usage message.
 #
 # Usage:
-#   bash scripts/00_install_claude_code_undo.sh [MODEL_STRING]
+#   bash scripts/00_install_claude_code_undo.sh MODEL
+#
+# Examples:
+#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-4-8[1m]'
+#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-4-7[1m]'
 #
 # After it succeeds, open a NEW shell (or `source ~/.bashrc`) so the
 # removed env vars are no longer set in subsequent processes, then re-run
@@ -76,6 +76,39 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
+
+# ---------------------------------------------------------------------------
+# Argument parsing — extremely strict. No silent fallbacks, no flags, no
+# extras. Wrong number of args, anything beginning with '-', or empty arg
+# all refuse with the usage string.
+# ---------------------------------------------------------------------------
+
+USAGE='Usage: bash 00_install_claude_code_undo.sh MODEL
+
+Required positional argument:
+  MODEL    The ANTHROPIC_MODEL value currently written on disk by
+           00_install_claude_code.sh, e.g. claude-opus-4-8[1m] or
+           claude-opus-4-7[1m]. No default — you must pass it explicitly
+           so this script cannot accidentally undo a different version'\''s
+           state.
+
+This script accepts no flags. -h, --help, and any other dash-prefixed
+argument are rejected; read the file header for documentation.'
+
+if [ "$#" -ne 1 ]; then
+    printf '%s\n' "$USAGE" >&2
+    die "expected exactly 1 positional argument (MODEL), got $#"
+fi
+case "$1" in
+    -*)
+        printf '%s\n' "$USAGE" >&2
+        die "unrecognized option/flag: '$1' (this script accepts no flags)"
+        ;;
+    '')
+        printf '%s\n' "$USAGE" >&2
+        die "MODEL argument is empty"
+        ;;
+esac
 
 require_non_root
 require_ubuntu_noble
@@ -97,18 +130,14 @@ CLAUDEMD="$CLAUDE_DIR/CLAUDE.md"
 # constants — must mirror scripts/00_install_claude_code.sh byte-for-byte
 # ---------------------------------------------------------------------------
 
-# Default matches the install script's current WANT["model"]. Override by
-# passing a different model string as $1 (e.g. 'claude-opus-4-7[1m]').
-DEFAULT_MODEL='claude-opus-4-8[1m]'
-MODEL="${1:-$DEFAULT_MODEL}"
-
-# Derive the "Opus X.Y" human-readable version that appears inside the
-# marker block's first comment line, from the model string. Format
-# expected: 'claude-opus-N-M[…]' → 'N.M'. If extraction fails, abort
-# rather than guess.
+# MODEL came in from $1 (argv parsing already enforced "exactly one, no
+# flags, non-empty"). Derive the "Opus X.Y" human-readable version that
+# appears inside the marker block's first comment line. Strict format:
+# 'claude-opus-N-M' or 'claude-opus-N-M[anything]'. Anything else aborts.
+MODEL="$1"
 HR_VERSION="$(printf '%s' "$MODEL" | sed -nE 's/^claude-opus-([0-9]+)-([0-9]+)(\[.*\])?$/\1.\2/p')"
 [ -n "$HR_VERSION" ] \
-    || die "could not derive human-readable Opus version from MODEL='$MODEL' (expected form: claude-opus-N-M[1m])"
+    || die "could not derive human-readable Opus version from MODEL='$MODEL' (expected form: claude-opus-N-M or claude-opus-N-M[1m])"
 
 MARKER_BEGIN='# >>> claude code config (managed by 00_install_claude_code.sh) >>>'
 MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
