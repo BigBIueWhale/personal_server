@@ -1,6 +1,6 @@
 # Personal Server Setup Guide (Ubuntu 24.04 LTS, NVIDIA, Xorg)
 
-Reproducible end-to-end setup for a single-user personal server running Ubuntu 24.04 LTS on NVIDIA hardware (RTX 5090 confirmed), with remote-desktop access via RustDesk and TeamViewer over a router DMZ to the public internet.
+Reproducible end-to-end setup for a single-user personal server running Ubuntu 24.04 LTS on NVIDIA hardware (RTX 5090 confirmed), with remote-desktop access via TeamViewer over a router DMZ to the public internet.
 
 Every numbered section has a corresponding script under [`scripts/`](./scripts/). Run them in order, one at a time, after a fresh OS install. The scripts are defensive: each one validates its preconditions, fails loud on anything unexpected, never silently. Re-running a finished step is a no-op (idempotent).
 
@@ -14,7 +14,7 @@ Every package and downloaded asset is **pinned to an exact version** in [`script
 
 This box is a hybrid-graphics build: discrete NVIDIA GPU (RTX 5090) **plus** a CPU with an integrated GPU (iGPU). **Both are required**, and they have non-interchangeable roles.
 
-**The monitor — and the EDID DisplayPort emulator from [§17](#17-edid-displayport-emulator-hardware) — must be plugged into the motherboard's video output, NOT the GPU's.** Repeat: cable into the motherboard's back-panel HDMI/DisplayPort, not the RTX's outputs.
+**The monitor — and the EDID DisplayPort emulator from [§16](#16-edid-displayport-emulator-hardware) — must be plugged into the motherboard's video output, NOT the GPU's.** Repeat: cable into the motherboard's back-panel HDMI/DisplayPort, not the RTX's outputs.
 
 Reasons this matters:
 
@@ -31,11 +31,11 @@ After install, sanity-check that you got it right: `nvidia-smi` should show **on
 
 1. **Ubuntu has already decided this for us.** Since `gdm3 46.2-1ubuntu1~24.04.1` (in `noble-updates` from 2025-01-20 onward), gdm3 ships [`Prefer-Xorg-for-all-Nvidia-versions.patch`](https://bugs.launchpad.net/ubuntu/+source/gdm3/+bug/2080498) which forces Xorg as the default user session for any NVIDIA driver ≥ 510. The 595 driver this guide installs matches that rule, so Ubuntu writes `PreferredDisplayServer=xorg` into the runtime GDM config at every boot. Fighting it is fragile and pointless.
 
-2. **Wayland breaks unattended remote-desktop, and the only workaround is invasive.** RustDesk and TeamViewer connect to the X server directly under Xorg. Under Wayland they go through `xdg-desktop-portal`'s `RemoteDesktop` / `ScreenCast` consent dialog on every connection — and the freedesktop spec's only persistence mechanism is a single-use `restore_token` that gets invalidated on any display-topology change (e.g., HDMI hotplug, EDID change). Far too fragile for a real headless server.
+2. **Wayland breaks unattended remote-desktop, and the only workaround is invasive.** TeamViewer connects to the X server directly under Xorg. Under Wayland it goes through `xdg-desktop-portal`'s `RemoteDesktop` / `ScreenCast` consent dialog on every connection — and the freedesktop spec's only persistence mechanism is a single-use `restore_token` that gets invalidated on any display-topology change (e.g., HDMI hotplug, EDID change). Far too fragile for a real headless server.
 
    I wrote and extensively audited the workaround: **[BigBIueWhale/ubuntu_patch_unattended_access](https://github.com/BigBIueWhale/ubuntu_patch_unattended_access)**. It's a source-level rebuild of `xdg-desktop-portal-gnome` that auto-clicks "Share" on every consent dialog (plus auto-picks the first monitor and force-enables "Allow Remote Interaction"). **It works.** I have it running on my other personal server. I would still not recommend it on a DMZ-exposed box. Lessons from the audit, so you can decide for yourself:
 
-   - The patch auto-approves **every** caller of `org.freedesktop.impl.portal.RemoteDesktop` / `ScreenCast`, not just RustDesk/TeamViewer. The GNOME backend uses `app_id` only for the dialog *heading text*, never for any access decision — so there is no scoping mechanism the patch could leave intact even in principle. Any flatpak or snap you ever install gains silent screen-capture and keystroke-injection through the portal, with no UI prompt. On stock GNOME the same flatpak would have to social-engineer you into clicking Share.
+   - The patch auto-approves **every** caller of `org.freedesktop.impl.portal.RemoteDesktop` / `ScreenCast`, not just TeamViewer. The GNOME backend uses `app_id` only for the dialog *heading text*, never for any access decision — so there is no scoping mechanism the patch could leave intact even in principle. Any flatpak or snap you ever install gains silent screen-capture and keystroke-injection through the portal, with no UI prompt. On stock GNOME the same flatpak would have to social-engineer you into clicking Share.
    - The patch is a `meson` source rebuild against the matching upstream tag, then `ninja install` over `/usr/libexec/xdg-desktop-portal-gnome`. It must be `apt-mark hold`-pinned, otherwise the next `apt upgrade` of `xdg-desktop-portal-gnome` silently reverts it. Forgetting the hold across point releases also risks ABI breakage if `libgtk-4` / `libadwaita` change the dialog APIs the patch hooks into.
    - It only ever matters if you're on Wayland in the first place. The portal is a session-bus service, never reachable from the network — so a remote attacker who has not already obtained code execution as the desktop user cannot hit it whether the patch is on or off.
    - Reversible in one shot via `sudo apt install --reinstall xdg-desktop-portal-gnome`, then `sudo apt-mark unhold xdg-desktop-portal-gnome`.
@@ -58,7 +58,6 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
 | Docker CE + plugins | `docker-ce = 5:29.4.1-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.0-1` (and matching libs) |
-| RustDesk | `1.4.6` (deterministic GitHub URL + SHA-256) |
 | TeamViewer | `15.76.5` (version-specific dl.teamviewer.com URL + SHA-256) |
 
 Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins.
@@ -126,7 +125,7 @@ Boot from the USB stick. In the live-image session before installation:
 After install completes and the box reboots:
 
 - The session lands at **Xorg automatically.** This is the gdm3 udev rule from [§0](#0-why-xorg-only) detecting the now-loaded `nvidia` kernel module and writing `PreferredDisplayServer=xorg` into `/run/gdm/custom.conf` at every boot. You don't have to do anything to get here — it's the default for any NVIDIA-on-noble-updates install since 2025-01-20. Verify with [§5](#5-validate-xorg-session) before proceeding.
-- The **GDM greeter (the login screen itself), however, is still Wayland by default** — that's a separate decision from the user-session policy. RustDesk warns about this on launch, and you'd be locked out remotely if autologin ever fails. We patch that in [§6](#6-gdm-greeter-on-xorg) by uncommenting `WaylandEnable=false` in `/etc/gdm3/custom.conf`.
+- The **GDM greeter (the login screen itself), however, is still Wayland by default** — that's a separate decision from the user-session policy. TeamViewer needs the greeter reachable too, and you'd be locked out remotely if autologin ever fails. We patch that in [§6](#6-gdm-greeter-on-xorg) by uncommenting `WaylandEnable=false` in `/etc/gdm3/custom.conf`.
 
 After the first reboot, log into your account, open a terminal, and clone this repository to start running the numbered scripts.
 
@@ -187,13 +186,13 @@ After it succeeds, **update the router's DMZ target on the router admin UI** to 
 
 ## 4a. Switch to Ethernet (optional)
 
-**Optional.** Only if you'd rather run this box on Ethernet than Wi-Fi. The static IP stays the same — the router's DMZ rule from [§19](#19-router-dmz-configuration) does not need to change. After it runs, the box is reachable on Ethernet at the same IP and Wi-Fi is off (recoverable in one command, see below).
+**Optional.** Only if you'd rather run this box on Ethernet than Wi-Fi. The static IP stays the same — the router's DMZ rule from [§18](#18-router-dmz-configuration) does not need to change. After it runs, the box is reachable on Ethernet at the same IP and Wi-Fi is off (recoverable in one command, see below).
 
 ```bash
-sudo bash scripts/14_migrate_static_ip_wifi_to_ethernet.sh 10.0.0.199
+sudo bash scripts/13_migrate_static_ip_wifi_to_ethernet.sh 10.0.0.199
 ```
 
-Reference: [`scripts/14_migrate_static_ip_wifi_to_ethernet.sh`](./scripts/14_migrate_static_ip_wifi_to_ethernet.sh). Atomically moves the static IP from Wi-Fi to Ethernet, sets the Wi-Fi profile back to DHCP, and disables the Wi-Fi radio. Heavily opinionated: refuses to run unless the system is in exactly the expected post-§4 state — Ubuntu noble, NetworkManager only (no rival `systemd-networkd`), exactly one Wi-Fi device and one *hardware* Ethernet device (Docker veth pairs filtered out), exactly one active wireless and one active wired connection bound to those devices, the Wi-Fi profile carrying `ipv4.method=manual` with the supplied IP, the Ethernet profile carrying `ipv4.method=auto` with a current DHCP lease and no leftover static fields, the target IP currently held only by Wi-Fi, and the default route reachable. After validation, profile changes are staged, Wi-Fi is cycled to DHCP, Ethernet is cycled to claim the static IP, and the kernel routing path and gateway/internet pings are re-checked specifically bound to the Ethernet interface. Any failure during the swap triggers automatic rollback to the original state (Wi-Fi static + Ethernet DHCP). Only after the swap verifies end-to-end does the script run `nmcli radio wifi off`, which writes `WirelessEnabled=false` to `/var/lib/NetworkManager/NetworkManager.state` — survives reboots. The wifi-disable step itself is warn-only by design: once the swap is committed, radio-toggle anomalies do not fail the script.
+Reference: [`scripts/13_migrate_static_ip_wifi_to_ethernet.sh`](./scripts/13_migrate_static_ip_wifi_to_ethernet.sh). Atomically moves the static IP from Wi-Fi to Ethernet, sets the Wi-Fi profile back to DHCP, and disables the Wi-Fi radio. Heavily opinionated: refuses to run unless the system is in exactly the expected post-§4 state — Ubuntu noble, NetworkManager only (no rival `systemd-networkd`), exactly one Wi-Fi device and one *hardware* Ethernet device (Docker veth pairs filtered out), exactly one active wireless and one active wired connection bound to those devices, the Wi-Fi profile carrying `ipv4.method=manual` with the supplied IP, the Ethernet profile carrying `ipv4.method=auto` with a current DHCP lease and no leftover static fields, the target IP currently held only by Wi-Fi, and the default route reachable. After validation, profile changes are staged, Wi-Fi is cycled to DHCP, Ethernet is cycled to claim the static IP, and the kernel routing path and gateway/internet pings are re-checked specifically bound to the Ethernet interface. Any failure during the swap triggers automatic rollback to the original state (Wi-Fi static + Ethernet DHCP). Only after the swap verifies end-to-end does the script run `nmcli radio wifi off`, which writes `WirelessEnabled=false` to `/var/lib/NetworkManager/NetworkManager.state` — survives reboots. The wifi-disable step itself is warn-only by design: once the swap is committed, radio-toggle anomalies do not fail the script.
 
 To reverse — turn Wi-Fi back on at any time, with no other changes:
 
@@ -221,7 +220,7 @@ If this fails, see [§0](#0-why-xorg-only).
 
 ## 6. GDM greeter on Xorg
 
-The gdm3 patch from [§0](#0-why-xorg-only) covers the **user session** but not the **GDM greeter** (the login screen itself, before any user logs in). The greeter still defaults to Wayland. RustDesk warns about this on launch — and if autologin ever fails, you would be locked out remotely.
+The gdm3 patch from [§0](#0-why-xorg-only) covers the **user session** but not the **GDM greeter** (the login screen itself, before any user logs in). The greeter still defaults to Wayland. TeamViewer needs the greeter on Xorg too — during the brief greeter window after each reboot it has no X server to attach to, and if autologin ever fails, you would be locked out remotely.
 
 Force the greeter to Xorg:
 
@@ -346,57 +345,13 @@ The container's `nvidia-smi` should print the same RTX and driver/CUDA version a
 
 ---
 
-## 14. RustDesk
+## 14. TeamViewer
 
 ```bash
-sudo bash scripts/11_install_rustdesk.sh
+sudo bash scripts/11_install_teamviewer.sh
 ```
 
-Reference: [`scripts/11_install_rustdesk.sh`](./scripts/11_install_rustdesk.sh). Downloads the **pinned RustDesk `1.4.6`** from the deterministic GitHub release URL (we do NOT query `/releases/latest` at install time — that would let the install drift), verifies its SHA-256 against the pin in [`scripts/lib/versions.sh`](./scripts/lib/versions.sh), confirms `dpkg-deb --field` reports `Package=rustdesk` and `Version=1.4.6`, then installs via `apt install ./<deb>` so apt resolves Noble's t64 transitional aliases (e.g., `libgtk-3-0` → `libgtk-3-0t64`). Raw `dpkg -i` would fail with unmet deps. Re-running on an already-installed box is a no-op apt-side, but the SHA-256 verify still runs as a tampering check.
-
-### Three things called "RustDesk" — do not confuse them
-
-The name "RustDesk" covers three different pieces of software, and they are easy to mix up. **This script installs only the client.**
-
-1. **The RustDesk client** (`/usr/bin/rustdesk`, the GUI you launch from the Activities menu). It is also a P2P **listener**: once you enable "Direct IP Access" in its settings, the client process binds `21118/tcp` and `21119/udp` and accepts incoming connections from other RustDesk clients on those ports. This is what we want. *(Yes, installed.)*
-
-2. **`rustdesk.service`** — a system-wide systemd unit that the `.deb`'s postinst installs at `/usr/lib/systemd/system/rustdesk.service`. Runs as **root**, but it is NOT a separate listener; it is a **supervisor**. It internally executes:
-
-   ```
-   sudo -E XDG_RUNTIME_DIR=/run/user/<uid> -u <user> /usr/share/rustdesk/rustdesk --server
-   ```
-
-   …so the actual listener runs as **your user**, with **your** config in `~/.config/rustdesk/`. There is exactly **one** listener — the user-mode one. The supervisor exists so the listener gets cleanly started, kept alive, and re-started across session quirks (autologin recoveries, GUI logouts, etc.). Confirm post-install with `ps -ef | grep rustdesk` — you will see one `root` process (the supervisor) and one process running as you (the actual listener) plus one for the tray. *(Yes, installed — as a side-effect of installing #1, intentional. Do **not** disable this unit.)*
-
-3. **RustDesk Server (`hbbs` + `hbbr`)** — a *completely separate* pair of daemons (rendezvous + relay) that you would deploy **in Docker** to run a self-hosted RustDesk relay infrastructure for a fleet of clients — the private equivalent of `rustdesk.com`'s public infra. Different repository, different container images, different DB. **We do not install this.** Direct IP Access on the client (item #1) means our box accepts P2P connections without a relay sitting between us, so the entire `hbbs`/`hbbr` stack is unnecessary on a single-user box. *(No, NOT installed — and we never want it on this box.)*
-
-If you ever read documentation that talks about "the RustDesk server," you almost certainly need to ask "which one?" — items #2 and #3 are wildly different things despite the naming collision.
-
-### Manual GUI steps after the script (cannot be automated)
-
-These are the in-app settings that actually flip the listener on and harden the session. **Do all five** — without them, item #1 above is installed but inert.
-
-1. **Launch RustDesk** from the Activities menu (it does not auto-start — the supervisor service launches it, but the first time it needs the GUI to write its config).
-2. **Settings → Network → enable "Direct IP Access"**. This is the toggle that makes the client process actually bind `21118/tcp` and `21119/udp` to listen for incoming connections. Without it, the client only initiates outgoing connections via the public RustDesk relay, which is the opposite of what a personal *server* wants. After flipping it, verify the listener is up:
-
-   ```bash
-   ss -tln | grep :21118    # expect a LISTEN line on *:21118
-   ss -uln | grep :21119    # expect an UNCONN line on 0.0.0.0:21119
-   ```
-
-3. **Settings → Display → uncheck "Hardware Codec"**. With NVENC enabled, RustDesk holds ~500 MB of VRAM open for the duration of every active remote session (regardless of whether you're encoding anything). Disabling it forces software encoding, frees that VRAM for compute workloads, and on this CPU is fast enough you won't notice the framerate. The trade is worth it on this hardware.
-4. **Set a permanent password for unattended access.** RustDesk's main window shows an auto-generated *temporary* password that rotates and is therefore useless for unattended remote-desktop. In the main window, click the menu next to the password field (or Settings → Security) and pick "Set permanent password." Pick something strong; the box is DMZ-exposed, this password and the SSH password are the two things gating any inbound session.
-5. **Settings → Security → Permissions** → set the dropdown to **"Full access"**. Otherwise the default profile blocks operations like file transfer, clipboard sync, and audio per connection — fine for shared boxes, wrong default for a personal server you reach yourself.
-
----
-
-## 15. TeamViewer
-
-```bash
-sudo bash scripts/12_install_teamviewer.sh
-```
-
-Reference: [`scripts/12_install_teamviewer.sh`](./scripts/12_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.76.5`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.76.5`, installs via `apt install ./<deb>`. Full client, not the host-only build.
+Reference: [`scripts/11_install_teamviewer.sh`](./scripts/11_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.76.5`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.76.5`, installs via `apt install ./<deb>`. Full client, not the host-only build.
 
 After install, `teamviewerd` listens on `127.0.0.1:5939` only (localhost). TeamViewer reaches its cloud relay infrastructure via outbound connections; no inbound exposure is required or desired. The script verifies the listener is on 127.0.0.1 and aborts loud if it ever appears on `0.0.0.0`.
 
@@ -409,21 +364,19 @@ The `.deb` postinst enables `teamviewerd.service` for boot, but that alone is **
 3. **Extras → Options → General → check "Start TeamViewer with system."** TeamViewer prompts once for your sudo password and finishes wiring autostart end-to-end. This is the step that actually makes the box reachable after a reboot — the `.deb`'s `systemctl enable` is a necessary precondition, not a sufficient one.
 4. **Sign in to your TeamViewer account** in the main window and **grant Easy Access** to this device. Easy Access binds the device to the account, so it appears in your account's device list under its hostname — any TeamViewer client signed into the same account connects by clicking that entry, with no per-device password and no TeamViewer ID to type. (A separate permanent password under Settings → Security is the alternative path; not used on this box, since I always connect from clients signed into my own account.)
 
-I keep both RustDesk and TeamViewer installed on the same box — belt and suspenders. They use different cloud infrastructure, so when one of them has an outage I still have remote access via the other.
-
 ---
 
-## 16. Developer toolchain
+## 15. Developer toolchain
 
 ```bash
-sudo bash scripts/13_install_developer_toolchain.sh
+sudo bash scripts/12_install_developer_toolchain.sh
 ```
 
-Reference: [`scripts/13_install_developer_toolchain.sh`](./scripts/13_install_developer_toolchain.sh). Installs four developer-toolchain components in sequence. All four are **intentionally unpinned** — each tracks its own upstream channel (apt, rustup, `uv self update`, `apt upgrade`), and pinning here would defeat the point. The script is idempotent: re-running updates each component in place rather than failing.
+Reference: [`scripts/12_install_developer_toolchain.sh`](./scripts/12_install_developer_toolchain.sh). Installs four developer-toolchain components in sequence. All four are **intentionally unpinned** — each tracks its own upstream channel (apt, rustup, `uv self update`, `apt upgrade`), and pinning here would defeat the point. The script is idempotent: re-running updates each component in place rather than failing.
 
 ### apt dev tools
 
-Stock Ubuntu Noble packages: `curl git gitk build-essential make cmake perl python3-pip net-tools`. The baseline that any future work on this box (compiling, troubleshooting the network, running random Python scripts, building C/C++) will need. Installing them up front saves a round of "command not found" surprises later. Pin pressure is appropriate for the security-relevant runtime stack (driver, CUDA, Docker, RustDesk, TeamViewer); these are convenience tools whose distro versions are fine.
+Stock Ubuntu Noble packages: `curl git gitk build-essential make cmake perl python3-pip net-tools`. The baseline that any future work on this box (compiling, troubleshooting the network, running random Python scripts, building C/C++) will need. Installing them up front saves a round of "command not found" surprises later. Pin pressure is appropriate for the security-relevant runtime stack (driver, CUDA, Docker, TeamViewer); these are convenience tools whose distro versions are fine.
 
 A note on `python3-pip`: on Ubuntu 24.04+, the system Python interpreter is PEP 668 / EXTERNALLY-MANAGED, so `pip install` directly into the system interpreter is blocked by default. Use venvs (`python3 -m venv`) or, better, `uv` (next subsection).
 
@@ -467,15 +420,15 @@ After install, future `apt upgrade` keeps VS Code current automatically.
 
 ---
 
-## 17. EDID DisplayPort emulator (hardware)
+## 16. EDID DisplayPort emulator (hardware)
 
-When the physical monitor is powered off, both Xorg and Wayland drop the GPU's display output and render a black screen — RustDesk and TeamViewer connect to a session with no pixels. The fix is a hardware **EDID DisplayPort emulator** (~$10 on Amazon): a small dongle that plugs into a free DisplayPort or HDMI on the GPU and presents a permanent fake EDID, making the GPU believe a monitor is always connected.
+When the physical monitor is powered off, both Xorg and Wayland drop the GPU's display output and render a black screen — TeamViewer connects to a session with no pixels. The fix is a hardware **EDID DisplayPort emulator** (~$10 on Amazon): a small dongle that plugs into a free DisplayPort or HDMI on the GPU and presents a permanent fake EDID, making the GPU believe a monitor is always connected.
 
 This is hardware, not software — no script. Buy one and plug it in.
 
 ---
 
-## 18. Network security verification
+## 17. Network security verification
 
 Before flipping the router DMZ, run the verification audit:
 
@@ -492,9 +445,6 @@ The expected externally-reachable ports after this guide are exactly:
 | Port | Protocol | Service |
 |---|---|---|
 | 22 | TCP | OpenSSH |
-| 21118 | TCP | RustDesk Direct IP Access |
-| 21119 | UDP | RustDesk signaling |
-| dynamic 32768–60999 | UDP | RustDesk P2P hole-punching (random per session) |
 
 Anything else listening externally is a finding to investigate.
 
@@ -509,17 +459,17 @@ Reference: [`network_security/remote_port_tester.py`](./network_security/remote_
 
 ---
 
-## 19. Router DMZ configuration
+## 18. Router DMZ configuration
 
 Manual step on the router admin UI. Set the DMZ host to the static IP from [§4](#4-static-ip). Verify the router forwards all incoming connections (TCP, UDP, ICMP) to that IP.
 
-After this, the box is on the public internet. Re-run the external port tester from [§18](#18-network-security-verification) to confirm only the four expected ports answer.
+After this, the box is on the public internet. Re-run the external port tester from [§17](#17-network-security-verification) to confirm only port 22 (SSH) answers.
 
 ---
 
 ## Companion documents
 
-- [`network_security/README.md`](./network_security/README.md) — detailed network-security posture, why UFW cannot be used (RustDesk's P2P hole-punching uses dynamically-allocated ephemeral UDP ports that a default-DROP policy would block), and the VMware-port-blocking script (`apply_vmware_firewall.py`) for hosts that *do* run VMware.
+- [`network_security/README.md`](./network_security/README.md) — detailed network-security posture (SSH-only inbound surface), the targeted-iptables approach over a blanket firewall, and the VMware-port-blocking script (`apply_vmware_firewall.py`) for hosts that *do* run VMware.
 - [`vmware/README.md`](./vmware/README.md) — VMware host-guest shared-folder setup. Optional; ignore if you don't run VMware.
 
 ---
@@ -546,11 +496,10 @@ After this, the box is on the public internet. Re-run the external port tester f
 │   ├── 08_install_cuda_toolkit.sh             # §11
 │   ├── 09_install_docker.sh                   # §12
 │   ├── 10_install_nvidia_container_toolkit.sh # §13
-│   ├── 11_install_rustdesk.sh                 # §14
-│   ├── 12_install_teamviewer.sh               # §15
-│   ├── 13_install_developer_toolchain.sh      # §16
-│   └── 14_migrate_static_ip_wifi_to_ethernet.sh # §4a (optional)
-├── network_security/                          # §18, audit and verify tools
+│   ├── 11_install_teamviewer.sh               # §14
+│   ├── 12_install_developer_toolchain.sh      # §15
+│   └── 13_migrate_static_ip_wifi_to_ethernet.sh # §4a (optional)
+├── network_security/                          # §17, audit and verify tools
 │   ├── README.md
 │   ├── verify_network_security.py
 │   ├── apply_vmware_firewall.py

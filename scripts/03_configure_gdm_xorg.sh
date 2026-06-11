@@ -3,9 +3,9 @@
 #
 # Even after the gdm3 noble-updates patch forces Xorg as the default user
 # session on NVIDIA hardware (see README §0), the GDM greeter — the login
-# screen itself, before any user logs in — defaults to Wayland. RustDesk warns
-# about this on launch: during the brief greeter window after each reboot,
-# RustDesk has no X server to attach to and cannot capture the screen. If
+# screen itself, before any user logs in — defaults to Wayland. This matters
+# for TeamViewer: during the brief greeter window after each reboot,
+# TeamViewer has no X server to attach to and cannot capture the screen. If
 # autologin ever fails for any reason, you are locked out remotely until
 # someone touches the keyboard.
 #
@@ -19,7 +19,7 @@
 #   - Backs up /etc/gdm3/custom.conf to /etc/gdm3/custom.conf.bak-<timestamp>.
 #   - Edits /etc/gdm3/custom.conf in place (one line: '#WaylandEnable=false' -> 'WaylandEnable=false').
 #   - Does NOT restart gdm3. That would terminate the active session, including
-#     any running Claude/SSH/RustDesk session you have open. Effective on next reboot.
+#     any running Claude/SSH/TeamViewer session you have open. Effective on next reboot.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"

@@ -45,14 +45,9 @@ FORBIDDEN_EXTERNAL_PORTS = {
 # Ports that ARE expected to listen on external interfaces (0.0.0.0 or ::)
 EXPECTED_EXTERNAL_TCP_PORTS = {
     22: "OpenSSH Server (sshd)",
-    21118: "RustDesk direct IP access",
 }
 
-EXPECTED_EXTERNAL_UDP_PORTS = {
-    21119: "RustDesk signaling/relay",
-    # Note: RustDesk also uses dynamic ephemeral UDP ports for P2P hole punching
-    # These are in range 32768-60999 and are expected
-}
+EXPECTED_EXTERNAL_UDP_PORTS = {}
 
 # Ports expected on localhost only (informational, not checked for violations)
 EXPECTED_LOCALHOST_PORTS = {
@@ -62,9 +57,6 @@ EXPECTED_LOCALHOST_PORTS = {
     631: "CUPS printing",
     53: "systemd-resolved DNS",
 }
-
-# Process names that indicate RustDesk (for identifying expected ephemeral UDP ports)
-RUSTDESK_PROCESS_NAMES = {"rustdesk", "rustdesk-"}
 
 
 # =============================================================================
@@ -206,7 +198,7 @@ def parse_ss_output(output: str, protocol: str) -> list[ListeningSocket]:
             else:
                 continue
         else:
-            # IPv4 or wildcard like 0.0.0.0:22 or *:21118
+            # IPv4 or wildcard like 0.0.0.0:22 or *:22
             if ":" in local_addr_port:
                 addr_part, port_part = local_addr_port.rsplit(":", 1)
                 local_address = addr_part
@@ -487,19 +479,6 @@ def verify_iptables_rules(
 # Listening port checking functions
 # =============================================================================
 
-def is_expected_rustdesk_ephemeral(socket: ListeningSocket) -> bool:
-    """Check if this is an expected RustDesk ephemeral UDP port."""
-    if socket.protocol != "udp":
-        return False
-    if not socket.is_external():
-        return False
-    if socket.local_port < 32768 or socket.local_port > 60999:
-        return False  # Not in ephemeral range
-    if socket.process_name and any(name in socket.process_name.lower() for name in RUSTDESK_PROCESS_NAMES):
-        return True
-    return False
-
-
 def verify_no_forbidden_ports(sockets: list[ListeningSocket]) -> list[CheckResult]:
     """Verify no forbidden ports are listening on external interfaces."""
     results = []
@@ -537,7 +516,6 @@ def verify_no_unexpected_external_ports(
     """Verify no unexpected ports are listening on external interfaces."""
     results = []
     unexpected = []
-    rustdesk_ephemeral_ports = []
     vmware_blocked_ports = []  # VMware ports that are listening but blocked by iptables
 
     for socket in sockets:
@@ -550,10 +528,6 @@ def verify_no_unexpected_external_ports(
                 continue
         elif socket.protocol == "udp":
             if socket.local_port in EXPECTED_EXTERNAL_UDP_PORTS:
-                continue
-            # Check for RustDesk ephemeral ports
-            if is_expected_rustdesk_ephemeral(socket):
-                rustdesk_ephemeral_ports.append(socket)
                 continue
 
         # Check if this is a VMware port that should be blocked by iptables
@@ -575,18 +549,6 @@ def verify_no_unexpected_external_ports(
 
         # This is truly unexpected
         unexpected.append(socket)
-
-    # Report RustDesk ephemeral ports (show process verification for transparency)
-    for socket in rustdesk_ephemeral_ports:
-        results.append(CheckResult(
-            passed=True,
-            message=f"RustDesk ephemeral UDP port {socket.local_port} verified by process name",
-            details=(
-                f"Process: {socket.process_name} (PID: {socket.pid or 'unknown'})\n"
-                f"Address: {socket.local_address}\n"
-                f"Purpose: P2P hole punching (dynamic port in range 32768-60999)"
-            ),
-        ))
 
     # Report VMware ports that are listening but blocked by iptables (this is the expected secure state)
     if vmware_blocked_ports:
@@ -660,7 +622,7 @@ def verify_expected_services(sockets: list[ListeningSocket]) -> list[CheckResult
             results.append(CheckResult(
                 passed=True,  # Don't fail on this
                 message=f"Note: {description} on port {port}/udp not currently listening",
-                details="This may be normal if RustDesk is not actively connected.",
+                details="This may be normal if the service is not actively connected.",
             ))
 
     return results

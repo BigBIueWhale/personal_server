@@ -577,7 +577,7 @@ def main():
     print("Firewall rules have been applied TEMPORARILY.")
     print()
     print(">>> TEST YOUR CONNECTION NOW <<<")
-    print("Open a NEW SSH or RustDesk session to verify connectivity.")
+    print("Open a NEW SSH session to verify connectivity.")
     print()
     print(f"You have {ROLLBACK_TIMEOUT_SECONDS // 60} minutes to confirm.")
     print()

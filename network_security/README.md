@@ -1,6 +1,6 @@
 # Network Security Posture (DMZ-Exposed Host)
 
-This server operates behind a consumer router with **full DMZ mode enabled**, meaning the router forwards **all incoming connections on all ports and all protocols** (TCP, UDP, ICMP, etc.) directly to this machine's public IPv4 address. This is an intentional configuration choice to support services like RustDesk remote desktop and OpenSSH Server without tedious per-port forwarding rules.
+This server operates behind a consumer router with **full DMZ mode enabled**, meaning the router forwards **all incoming connections on all ports and all protocols** (TCP, UDP, ICMP, etc.) directly to this machine's public IPv4 address. This is an intentional configuration choice to support OpenSSH Server without tedious per-port forwarding rules.
 
 Given this level of exposure to the public internet, it is absolutely critical to understand exactly which services are listening on external network interfaces (`0.0.0.0` or `::`) and ensure nothing unexpected is exposed.
 
@@ -18,7 +18,7 @@ sudo ss -tlnp
 sudo ss -ulnp
 
 # List processes that commonly open network ports
-ps aux | grep -E 'vmware|vmnet|rustdesk|ollama|sshd|docker|teamviewer' | grep -v grep
+ps aux | grep -E 'vmware|vmnet|ollama|sshd|docker|teamviewer' | grep -v grep
 ```
 
 Or use the automated verification script included in this directory:
@@ -48,9 +48,6 @@ These ports are **by design** exposed to the public internet and are required fo
 | Port | Protocol | Process | Purpose |
 |------|----------|---------|---------|
 | **22** | TCP | `sshd` (OpenSSH Server) | Secure Shell access for remote administration from any device including a Samsung Galaxy S25 smartphone running Termius, a MacBook Pro running Terminal, or a Windows 11 PC running PuTTY. Authentication is by password (intentional trade-off — convenient for ad-hoc remote access from devices that don't have my SSH keys provisioned; the obvious harden-here lever for this DMZ host is to switch to key-only auth and accept the workflow tax). |
-| **21118** | TCP | `rustdesk` | RustDesk direct IP access port. The RustDesk Client application (installed via `.deb` package from [rustdesk.com](https://rustdesk.com)) acts as both client and server simultaneously. This port allows incoming remote desktop connections without relying on RustDesk's public relay infrastructure. |
-| **21119** | UDP | `rustdesk` | RustDesk signaling/relay port for WebSocket-based communication. |
-| **Dynamic UDP** | UDP | `rustdesk` | RustDesk uses dynamically allocated ephemeral UDP ports for peer-to-peer (P2P) hole punching. The specific port number changes on each connection attempt (e.g., port 38642 in one session, port 41023 in another). This is expected and correct behavior—see Section 4 for why this matters. |
 
 ---
 
@@ -68,19 +65,13 @@ These services listen exclusively on the loopback interface (`127.0.0.1`) or the
 
 ---
 
-## 4. Why UFW (Uncomplicated Firewall) Must NOT Be Used
+## 4. Inbound Posture and the Targeted-iptables Approach
 
-**Critical:** Do not enable UFW, firewalld, or any blanket firewall that indiscriminately blocks incoming UDP traffic on this server.
+The only service this host intentionally exposes to the internet is **OpenSSH on TCP 22** (Section 2). TeamViewer, when installed, is outbound-only — its daemon binds `127.0.0.1:5939` and reaches its relay infrastructure over outbound connections, so it adds no inbound surface (Section 3).
 
-RustDesk's peer-to-peer connection mechanism relies on **UDP hole punching**, a NAT traversal technique that requires the ability to receive unsolicited incoming UDP packets on dynamically allocated ephemeral ports. After analyzing the [RustDesk source code on GitHub](https://github.com/rustdesk/rustdesk), specifically the file `src/lan.rs`, I confirmed that RustDesk binds UDP sockets to `0.0.0.0:0`, which instructs the Linux kernel to assign a random available port from the ephemeral port range (typically 32768-60999).
+Given that, the firewall job on this box is narrow: it is not about defending a wide set of intentionally-open inbound ports, but about making sure nothing *unintended* becomes externally reachable through the DMZ. The concrete instance of that problem is VMware Workstation Pro, which silently opens several ports on all interfaces as soon as it is installed (Section 5).
 
-If you enable UFW with default deny policies:
-- RustDesk P2P connections will fail during the hole-punching phase
-- Connections will fall back to relay servers, which are slower and may be unreliable
-- Direct IP access functionality may cease working entirely
-- You would need to allow the entire ephemeral UDP port range, which defeats the purpose of the firewall
-
-**The correct approach** for this DMZ-exposed server is to use **targeted iptables rules** that block only specific known-problematic ports (such as those opened by VMware Workstation Pro) while allowing all other traffic. See Section 5 below.
+**The approach used here** is **targeted iptables rules** that block only those specific known-problematic ports (such as the ones VMware opens) while leaving everything else untouched. This keeps the change auditable and self-contained — each rule maps to a named port and a documented reason — rather than introducing a blanket default-deny policy whose interactions with Docker's own iptables chains (Section 5.4) would need separate reasoning. See Section 5 below.
 
 ---
 
@@ -166,7 +157,7 @@ sudo iptables-save
 
 ### 5.5 The Solution: Block VMware Ports with Automatic Rollback
 
-Since UFW cannot be used (it would break RustDesk's P2P functionality), we use **surgical iptables rules** to block only VMware's problematic ports while allowing all other traffic through.
+Following the targeted approach from Section 4, we use **surgical iptables rules** to block only VMware's problematic ports while allowing all other traffic through.
 
 Use the included Python script which provides **automatic 5-minute rollback safety** for remote administration:
 

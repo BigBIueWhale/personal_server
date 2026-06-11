@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/14_migrate_static_ip_wifi_to_ethernet.sh — move the static IPv4 from
+# scripts/13_migrate_static_ip_wifi_to_ethernet.sh — move the static IPv4 from
 # Wi-Fi to Ethernet, then disable Wi-Fi (reboot-persistent, reversible).
 #
 # Designed for the very specific case this project lives in:
@@ -39,10 +39,10 @@
 #     failure.
 #
 # Usage:
-#   sudo bash scripts/14_migrate_static_ip_wifi_to_ethernet.sh <target-ipv4>
+#   sudo bash scripts/13_migrate_static_ip_wifi_to_ethernet.sh <target-ipv4>
 #
 # Examples:
-#   sudo bash scripts/14_migrate_static_ip_wifi_to_ethernet.sh 10.0.0.199
+#   sudo bash scripts/13_migrate_static_ip_wifi_to_ethernet.sh 10.0.0.199
 #
 # After this script succeeds the router's DMZ rule (which targets the static IP)
 # does not need to change — the IP is the same, only the NIC carrying it has

@@ -14,7 +14,6 @@
 #   4. Commit the change.
 #
 # The .deb SHA-256 values were computed at the time of original install:
-#   sha256sum ~/Downloads/rustdesk-1.4.6-x86_64.deb
 #   sha256sum ~/Downloads/teamviewer_amd64.deb
 
 # -- NVIDIA proprietary driver (open kernel module variant) --------------------
@@ -48,14 +47,6 @@ NVIDIA_CONTAINER_TOOLKIT_BASE_VERSION=1.19.0-1
 # CUDA base image used for the GPU passthrough smoke test.
 CUDA_SMOKE_TEST_IMAGE=nvidia/cuda:12.8.0-base-ubuntu24.04
 
-# -- RustDesk client -----------------------------------------------------------
-# Tag is the GitHub-flagged stable release. URL is built deterministically from
-# the tag — we do NOT query the GitHub /releases/latest API at install time, so
-# the install is reproducible regardless of what becomes "latest" later.
-RUSTDESK_VERSION=1.4.6
-RUSTDESK_DEB_URL="https://github.com/rustdesk/rustdesk/releases/download/${RUSTDESK_VERSION}/rustdesk-${RUSTDESK_VERSION}-x86_64.deb"
-RUSTDESK_DEB_SHA256=0da46d7a7b252282ded5323f74319a10c1fa7271001d3b297b3def415c8c8f04
-
 # -- TeamViewer (full client) --------------------------------------------------
 # Pinned via the dl.teamviewer.com version-specific URL pattern. The plain
 # download.teamviewer.com URL serves whatever is current and CANNOT be pinned;
@@ -66,7 +57,7 @@ TEAMVIEWER_DEB_URL="https://dl.teamviewer.com/download/linux/version_15x/teamvie
 TEAMVIEWER_DEB_SHA256=8e5b19ac8860272a0842164f67568c03f369b0cfc9a0056dc352bb0a22774b99
 
 # -- Developer toolchain (intentionally unpinned) ------------------------------
-# scripts/13_install_developer_toolchain.sh installs four components that are
+# scripts/12_install_developer_toolchain.sh installs four components that are
 # DELIBERATELY not version-pinned, because their upstream channels are the
 # right update mechanism:
 #   - apt dev tools  : track noble's normal apt-upgrade flow.

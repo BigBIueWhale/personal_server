@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/13_install_developer_toolchain.sh — install the developer toolchain.
+# scripts/12_install_developer_toolchain.sh — install the developer toolchain.
 #
 # Single-script installer for everything needed to build, debug, and edit code
 # on this box. Runs four phases in sequence; each is independently idempotent
@@ -21,7 +21,7 @@
 #                        whole point is fresh versions via apt upgrade.
 #
 # Usage:
-#   sudo bash scripts/13_install_developer_toolchain.sh
+#   sudo bash scripts/12_install_developer_toolchain.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"

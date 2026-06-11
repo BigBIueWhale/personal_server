@@ -4,7 +4,7 @@ Comprehensive Remote Port Security Tester
 
 This script performs thorough network security testing of a personal server from a
 remote location. It verifies that:
-  - Expected services (SSH, RustDesk) are accessible
+  - Expected services (SSH) are accessible
   - VMware ports are properly blocked by firewall rules
   - Localhost-only services are not accidentally exposed
   - No unexpected services are listening on any port
@@ -12,7 +12,6 @@ remote location. It verifies that:
 
 Designed for a DMZ-exposed Ubuntu 24.04 server with:
   - OpenSSH Server on port 22
-  - RustDesk on ports 21118/tcp and 21119/udp
   - VMware Workstation Pro (ports blocked by iptables)
   - OpenWebUI, Ollama, TeamViewer, CUPS (localhost-only)
 
@@ -313,22 +312,6 @@ MUST_BE_OPEN = [
         expected=ExpectedState.OPEN,
         description="SSH server for remote administration",
         severity_if_wrong=Severity.CRITICAL,
-    ),
-    PortSpec(
-        port=21118,
-        protocol=Protocol.TCP,
-        service="RustDesk",
-        expected=ExpectedState.OPEN,
-        description="RustDesk direct IP access port",
-        severity_if_wrong=Severity.CRITICAL,
-    ),
-    PortSpec(
-        port=21119,
-        protocol=Protocol.UDP,
-        service="RustDesk",
-        expected=ExpectedState.OPEN,
-        description="RustDesk signaling/relay port",
-        severity_if_wrong=Severity.WARNING,  # UDP might not respond to probes
     ),
 ]
 
@@ -920,9 +903,9 @@ def get_discovery_ports(quick: bool = False) -> list[int]:
             5900, 5901, 5902, 5903, 5904, 5905, 5939, 6000, 6379,
             6443, 6666, 6667, 7000, 7001, 8000, 8080, 8081, 8443,
             8888, 9000, 9090, 9092, 9200, 9300, 10000, 10250, 10255,
-            11211, 11434, 15672, 21118, 27017,
-            # RustDesk and VMware specific
-            21119, 902, 912, 8222, 8333,
+            11211, 11434, 15672, 27017,
+            # VMware specific
+            902, 912, 8222, 8333,
             # VS Code / code-server / IDE ports
             8889, 3001, 3030, 7080, 5678, 9229, 9222, 9230, 9003,
             2345, 5005, 4024, 2087, 5173, 5174, 4200, 4201, 8082,
@@ -1122,7 +1105,7 @@ def run_all_tests(target_ipv4: str, target_ipv6: Optional[str] = None,
     print()
 
     # Get list of expected open ports
-    expected_open = {22, 21118}  # SSH and RustDesk TCP
+    expected_open = {22}  # SSH
 
     # Progress callback for in-place updates
     last_percent = [-1]  # Use list to allow mutation in closure
@@ -1268,7 +1251,7 @@ Examples:
 By default, scans ALL 65535 TCP ports. Use --quick for faster ~1100 port scan.
 
 This script tests from a remote location to verify:
-  - Expected services (SSH, RustDesk) are accessible
+  - Expected services (SSH) are accessible
   - VMware ports (902, 912, 8222, 8333) are blocked by firewall
   - Localhost-only services are not accidentally exposed
   - No unexpected ports are open on ANY port
