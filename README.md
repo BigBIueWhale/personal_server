@@ -56,8 +56,8 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 |---|---|
 | NVIDIA driver branch + full version | `nvidia-driver-595-open = 595.71.05-0ubuntu0.24.04.1` |
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
-| Docker CE + plugins | `docker-ce = 5:29.4.2-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
-| NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.0-1` (and matching libs) |
+| Docker CE + plugins | `docker-ce = 5:29.5.3-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
+| NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.1-1` (and matching libs) |
 | TeamViewer | `15.78.3` (version-specific dl.teamviewer.com URL + SHA-256) |
 
 Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins.
@@ -102,12 +102,12 @@ These are the exact bytes used to bootstrap this box. Pinned for byte-level repr
 
 | Asset | File | Size (bytes) | Released | URL | SHA-256 |
 |---|---|---|---|---|---|
-| Ubuntu installer | `ubuntu-24.04.3-desktop-amd64.iso` | 6,345,887,744 | 2025-08-07 | `https://releases.ubuntu.com/24.04.3/ubuntu-24.04.3-desktop-amd64.iso` | `faabcf33ae53976d2b8207a001ff32f4e5daae013505ac7188c9ea63988f8328` |
+| Ubuntu installer | `ubuntu-24.04.4-desktop-amd64.iso` | 6,655,619,072 | 2026-02-10 | `https://releases.ubuntu.com/24.04.4/ubuntu-24.04.4-desktop-amd64.iso` | `3a4c9877b483ab46d7c3fbe165a0db275e1ae3cfe56a5657e5a47c2f99a99d1e` |
 | USB writer (Windows) | `rufus-4.9.exe` | 2,102,632 | 2025-06-15 | `https://github.com/pbatard/rufus/releases/download/v4.9/rufus-4.9.exe` | `497f796e6d076d4855d697965c04626e6d3624658fce3eca82ab14f7414eede2` |
 
-Authoritative SHA-256 sources: the Ubuntu ISO digest is published at `https://releases.ubuntu.com/24.04.3/SHA256SUMS` (signed by `SHA256SUMS.gpg` against Ubuntu CD Image Automatic Signing Key `0xD94AA3F0EFE21092`); the Rufus digest is published in the GitHub release asset metadata at `https://github.com/pbatard/rufus/releases/tag/v4.9`. Both files were verified byte-for-byte against those sources during the reference setup.
+Authoritative SHA-256 sources: the Ubuntu ISO digest is published at `https://releases.ubuntu.com/24.04.4/SHA256SUMS` (signed by `SHA256SUMS.gpg` against Ubuntu CD Image Automatic Signing Key `0xD94AA3F0EFE21092`); the Rufus digest is published in the GitHub release asset metadata at `https://github.com/pbatard/rufus/releases/tag/v4.9`. Both files were verified byte-for-byte against those sources during the reference setup.
 
-A later 24.04.x point release will also work — point releases just bundle accumulated `noble-updates` — but `24.04.3` is the verified-working starting point that these scripts and pins were validated against.
+A later 24.04.x point release will also work — point releases just bundle accumulated `noble-updates` — but `24.04.4` is the verified-working starting point that these scripts and pins were validated against.
 
 ### Live-image install steps
 
