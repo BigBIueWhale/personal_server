@@ -114,6 +114,14 @@ else
     info "wrote $AUTH_CONF"
 fi
 
+# sshd -t and -T (below) stat the privilege-separation directory /run/sshd.
+# Under socket activation it is ssh.service's RuntimeDirectory= that creates
+# /run/sshd, and only when the service first starts — i.e. on the first inbound
+# connection — so on a fresh install it does not exist yet and sshd -t would
+# abort with "Missing privilege separation directory: /run/sshd". Create it now
+# so validation can run; systemd reasserts its owner/mode when ssh.service starts.
+[ -d /run/sshd ] || install -d -m 0755 /run/sshd
+
 # Validate, then assert the effective policy (sshd -T reads the merged config).
 sshd -t || die "sshd -t rejected the configuration — refusing to continue"
 eff() { sshd -T 2>/dev/null | awk -v k="$1" 'tolower($1)==k{print tolower($2); exit}'; }
