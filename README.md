@@ -54,11 +54,11 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 
 | Component | Pin |
 |---|---|
-| NVIDIA driver branch + full version | `nvidia-driver-595-open = 595.58.03-0ubuntu0.24.04.1` |
+| NVIDIA driver branch + full version | `nvidia-driver-595-open = 595.71.05-0ubuntu0.24.04.1` |
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
-| Docker CE + plugins | `docker-ce = 5:29.4.1-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
+| Docker CE + plugins | `docker-ce = 5:29.4.2-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.0-1` (and matching libs) |
-| TeamViewer | `15.76.5` (version-specific dl.teamviewer.com URL + SHA-256) |
+| TeamViewer | `15.78.3` (version-specific dl.teamviewer.com URL + SHA-256) |
 
 Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins.
 
@@ -227,11 +227,11 @@ Reference: [`scripts/04_configure_tmp_cleanup.sh`](./scripts/04_configure_tmp_cl
 sudo bash scripts/05_install_openssh_server.sh
 ```
 
-Reference: [`scripts/05_install_openssh_server.sh`](./scripts/05_install_openssh_server.sh). Installs `openssh-server`, then verifies `ssh.socket` is enabled and active and that port 22 is listening.
+Reference: [`scripts/05_install_openssh_server.sh`](./scripts/05_install_openssh_server.sh). Installs `openssh-server` and sets the authentication policy via `/etc/ssh/sshd_config.d/10-auth.conf`: **`PasswordAuthentication yes`, `PubkeyAuthentication no`** — password login, keys off — asserted with `sshd -T`. Reach the box from any device with just the account password (a phone running Termius, a MacBook, a Windows box with PuTTY); nothing to provision per device.
 
-`openssh-server` on Ubuntu 24.04 is **socket-activated**: `ssh.socket` listens on port 22 from boot, and `ssh.service` is spawned only when a connection arrives. So `systemctl is-active ssh.service` will show `inactive` between connections — that is the correct steady state, not a misconfiguration. The Settings → Sharing → Remote Login GUI toggle is a redundant no-op under socket activation. The script does neither.
+It also pins the listener to **IPv4 only** via a `ssh.socket` drop-in, because this box disables IPv6 ([§16](#16-disable-ipv6)). The packaged socket binds both `0.0.0.0:22` and `[::]:22`; the empty `ListenStream=` clears that list and re-adds only the v4 listener. (`AddressFamily inet` in `sshd_config` would *not* do this — under socket activation the socket, not sshd, owns the bind.) The script verifies port 22 listens on `0.0.0.0` and **not** on `[::]`.
 
-This script does not change SSH authentication policy. `/etc/ssh/sshd_config` and any drop-ins under `/etc/ssh/sshd_config.d/` are left alone.
+`openssh-server` on 24.04 is **socket-activated**: `ssh.socket` listens from boot and spawns `ssh.service` per connection, so `systemctl is-active ssh.service` reading `inactive` between connections is correct, not a fault. The Settings → Sharing → Remote Login GUI toggle is a redundant no-op under socket activation; the script does neither.
 
 ---
 
@@ -316,18 +316,19 @@ The container's `nvidia-smi` should print the same RTX and driver/CUDA version a
 sudo bash scripts/10_install_teamviewer.sh
 ```
 
-Reference: [`scripts/10_install_teamviewer.sh`](./scripts/10_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.76.5`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.76.5`, installs via `apt install ./<deb>`. Full client, not the host-only build.
+Reference: [`scripts/10_install_teamviewer.sh`](./scripts/10_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.78.3`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.78.3`, installs via `apt install ./<deb>`. Full client, not the host-only build.
 
 After install, `teamviewerd` listens on `127.0.0.1:5939` only (localhost). TeamViewer reaches its cloud relay infrastructure via outbound connections; no inbound exposure is required or desired. The script verifies the listener is on 127.0.0.1 and aborts loud if it ever appears on `0.0.0.0`.
 
 ### Manual GUI steps after the script (cannot be automated)
 
-The `.deb` postinst enables `teamviewerd.service` for boot, but that alone is **not** enough — without the in-app autostart toggle below, `systemctl is-enabled teamviewerd` will happily report `enabled` while remote connections still fail after every reboot. Do all four.
+The `.deb` postinst enables `teamviewerd.service` for boot, but that alone is **not** enough — without the in-app autostart toggle below, `systemctl is-enabled teamviewerd` will happily report `enabled` while remote connections still fail after every reboot. Do all five.
 
 1. **Launch TeamViewer** from the Activities menu.
 2. **Accept the EULA.**
 3. **Extras → Options → General → check "Start TeamViewer with system."** TeamViewer prompts once for your sudo password and finishes wiring autostart end-to-end. This is the step that actually makes the box reachable after a reboot — the `.deb`'s `systemctl enable` is a necessary precondition, not a sufficient one.
 4. **Sign in to your TeamViewer account** in the main window and **grant Easy Access** to this device. Easy Access binds the device to the account, so it appears in your account's device list under its hostname — any TeamViewer client signed into the same account connects by clicking that entry, with no per-device password and no TeamViewer ID to type. (A separate permanent password under Settings → Security is the alternative path; not used on this box, since I always connect from clients signed into my own account.)
+5. **Harden the account — this is the real attack surface.** With Easy Access the *account* is the key to this box, so protect it like one: turn on **two-factor authentication** on the account *and* **two-factor for connections** (each inbound session must be approved on your phone); set the **Allowlist** (Extras → Options → Security → Block and Allowlist) to **only your own account**, so knowing this device's ID isn't enough to connect; disable the random/personal unattended password so account auth is the sole path; and enable connection/sign-in **email alerts** with **Trusted Devices** on. A strong OS password does nothing against a TeamViewer-account compromise — 2FA does.
 
 ---
 
@@ -393,9 +394,21 @@ This is hardware, not software — no script. Buy one and plug it in.
 
 ---
 
-## 16. Network security verification
+## 16. Disable IPv6
 
-This is the last hardening gate before the box is exposed. Run the local audit now, while it still sits on a DHCP address — before it takes its public-facing static IP in [§17](#17-static-ip) and the DMZ goes live:
+This box is reachable from the internet on its static IPv4 through the DMZ; its globally-routable IPv6 addresses would be a second, un-NAT'd front door that nothing here needs. Turn IPv6 off at the kernel before exposure:
+
+```bash
+sudo bash scripts/12_disable_ipv6.sh
+```
+
+Reference: [`scripts/12_disable_ipv6.sh`](./scripts/12_disable_ipv6.sh). Writes a sysctl drop-in (`net.ipv6.conf.{all,default}.disable_ipv6 = 1`), applies it, and asserts no globally-routable v6 address remains. sshd is already pinned IPv4-only in [§8](#8-openssh-server), so this disables no listening service. Idempotent.
+
+---
+
+## 17. Network security verification
+
+Run the local audit now, while it still sits on a DHCP address — before it takes its public-facing static IP in [§18](#18-static-ip) and the DMZ goes live:
 
 ```bash
 sudo python3 ./network_security/verify_network_security.py
@@ -424,18 +437,18 @@ Reference: [`network_security/remote_port_tester.py`](./network_security/remote_
 
 ---
 
-## 17. Static IP
+## 18. Static IP
 
-Everything up to here hardened the box while it sat on a DHCP lease — present on the LAN, but unreachable from the internet. This step is deliberately last, because the router's DMZ forwards every inbound connection to one fixed IP, so **the moment this box claims that IP it is live on the public internet.** Doing it now — after the hardening steps and the local audit in [§16](#16-network-security-verification) — means the box is already locked down the instant it is exposed, not part-way through setup.
+Everything up to here hardened the box while it sat on a DHCP lease — present on the LAN, but unreachable from the internet. This step is deliberately last, because the router's DMZ forwards every inbound connection to one fixed IP, so **the moment this box claims that IP it is live on the public internet.** Doing it now — after the hardening steps and the local audit in [§17](#17-network-security-verification) — means the box is already locked down the instant it is exposed, not part-way through setup.
 
 Set a static IPv4 on the Ethernet interface, then disable Wi-Fi so the box lives on the wire:
 
 ```bash
-sudo bash scripts/12_set_static_ip.sh                   # defaults to 10.0.0.200
-sudo bash scripts/12_set_static_ip.sh 10.0.0.199        # explicit (e.g., second box on same LAN)
+sudo bash scripts/13_set_static_ip.sh                   # defaults to 10.0.0.200
+sudo bash scripts/13_set_static_ip.sh 10.0.0.199        # explicit (e.g., second box on same LAN)
 ```
 
-Reference: [`scripts/12_set_static_ip.sh`](./scripts/12_set_static_ip.sh). All validation runs up front before anything is touched: Ubuntu noble with NetworkManager as the sole network manager (no rival `systemd-networkd`); the target IP is well-formed (no network/broadcast/loopback values); exactly one *hardware* Ethernet device (Docker veth pairs filtered out) with exactly one active wired connection bound to it; the Ethernet link has carrier (cable plugged in); a default route runs through that Ethernet interface and its gateway is reachable; the target IP is on the same /24 as the gateway; and the target IP doesn't currently respond to ping (not in use by another host). After validation, the script switches the Ethernet profile from DHCP to manual and cycles the connection — Wi-Fi, if still up, carries traffic during the brief Ethernet-down window — then verifies end-to-end on Ethernet: the target IP is held only by Ethernet, the kernel routes outbound via Ethernet, and the gateway and internet both answer when pinged bound to the Ethernet interface. Any failure rolls the profile back to DHCP automatically. Re-running once the static IP is already in place is a no-op.
+Reference: [`scripts/13_set_static_ip.sh`](./scripts/13_set_static_ip.sh). All validation runs up front before anything is touched: Ubuntu noble with NetworkManager as the sole network manager (no rival `systemd-networkd`); the target IP is well-formed (no network/broadcast/loopback values); exactly one *hardware* Ethernet device (Docker veth pairs filtered out) with exactly one active wired connection bound to it; the Ethernet link has carrier (cable plugged in); a default route runs through that Ethernet interface and its gateway is reachable; the target IP is on the same /24 as the gateway; and the target IP doesn't currently respond to ping (not in use by another host). After validation, the script switches the Ethernet profile from DHCP to manual and cycles the connection — Wi-Fi, if still up, carries traffic during the brief Ethernet-down window — then verifies end-to-end on Ethernet: the target IP is held only by Ethernet, the kernel routes outbound via Ethernet, and the gateway and internet both answer when pinged bound to the Ethernet interface. Any failure rolls the profile back to DHCP automatically. Re-running once the static IP is already in place is a no-op.
 
 Only after the static IP verifies does the script disable the Wi-Fi radio with `nmcli radio wifi off`, writing `WirelessEnabled=false` to `/var/lib/NetworkManager/NetworkManager.state` so it survives reboots. That final step is warn-only: once the static IP is committed, a radio-toggle anomaly does not fail the run. Wi-Fi is reversible at any time, with no other changes:
 
@@ -443,15 +456,15 @@ Only after the static IP verifies does the script disable the Wi-Fi radio with `
 sudo nmcli radio wifi on
 ```
 
-If your router's DMZ already targets this IP, the box is now live on the public internet — go straight to the external verification in [§18](#18-router-dmz-configuration). If it doesn't yet, set it there.
+If your router's DMZ already targets this IP, the box is now live on the public internet — go straight to the external verification in [§19](#19-router-dmz-configuration). If it doesn't yet, set it there.
 
 ---
 
-## 18. Router DMZ configuration
+## 19. Router DMZ configuration
 
-Manual step on the router admin UI. Point the DMZ host at the static IP from [§17](#17-static-ip) — or, if it already points there, just confirm it. Verify the router forwards all incoming connections (TCP, UDP, ICMP) to that IP.
+Manual step on the router admin UI. Point the DMZ host at the static IP from [§18](#18-static-ip) — or, if it already points there, just confirm it. Verify the router forwards all incoming connections (TCP, UDP, ICMP) to that IP.
 
-The box is now on the public internet — it became reachable the moment it claimed the IP in [§17](#17-static-ip). Re-run the external port tester from [§16](#16-network-security-verification), off-LAN, to confirm only port 22 (SSH) answers.
+The box is now on the public internet — it became reachable the moment it claimed the IP in [§18](#18-static-ip). Re-run the external port tester from [§17](#17-network-security-verification), off-LAN, to confirm only port 22 (SSH) answers.
 
 ---
 
@@ -485,8 +498,9 @@ The box is now on the public internet — it became reachable the moment it clai
 │   ├── 09_install_nvidia_container_toolkit.sh # §12
 │   ├── 10_install_teamviewer.sh               # §13
 │   ├── 11_install_developer_toolchain.sh      # §14
-│   └── 12_set_static_ip.sh                    # §17
-├── network_security/                          # §16, audit and verify tools
+│   ├── 12_disable_ipv6.sh                      # §16
+│   └── 13_set_static_ip.sh                    # §18
+├── network_security/                          # §17, audit and verify tools
 │   ├── README.md
 │   ├── verify_network_security.py
 │   ├── apply_vmware_firewall.py

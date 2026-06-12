@@ -19,7 +19,7 @@
 # -- NVIDIA proprietary driver (open kernel module variant) --------------------
 # nvidia-driver-${BRANCH}-open metapackage and its DKMS + utils companions.
 NVIDIA_DRIVER_BRANCH=595
-NVIDIA_DRIVER_VERSION=595.58.03-0ubuntu0.24.04.1
+NVIDIA_DRIVER_VERSION=595.71.05-0ubuntu0.24.04.1
 NVIDIA_DKMS_VERSION=$NVIDIA_DRIVER_VERSION
 NVIDIA_UTILS_VERSION=$NVIDIA_DRIVER_VERSION
 
@@ -31,9 +31,9 @@ CUDA_TOOLKIT_VERSION=13.0.3-1
 CUDA_KEYRING_URL=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
 
 # -- Docker CE and plugins -----------------------------------------------------
-# All five pinned to the same upstream release (5:29.4.1) plus matching plugins.
-DOCKER_CE_VERSION="5:29.4.1-1~ubuntu.24.04~noble"
-DOCKER_CE_CLI_VERSION="5:29.4.1-1~ubuntu.24.04~noble"
+# All five pinned to the same upstream release (5:29.4.2) plus matching plugins.
+DOCKER_CE_VERSION="5:29.4.2-1~ubuntu.24.04~noble"
+DOCKER_CE_CLI_VERSION="5:29.4.2-1~ubuntu.24.04~noble"
 CONTAINERD_IO_VERSION="2.2.3-1~ubuntu.24.04~noble"
 DOCKER_BUILDX_PLUGIN_VERSION="0.33.0-1~ubuntu.24.04~noble"
 DOCKER_COMPOSE_PLUGIN_VERSION="5.1.3-1~ubuntu.24.04~noble"
@@ -52,9 +52,9 @@ CUDA_SMOKE_TEST_IMAGE=nvidia/cuda:12.8.0-base-ubuntu24.04
 # download.teamviewer.com URL serves whatever is current and CANNOT be pinned;
 # the dl.teamviewer.com path with version_15x/<file>_<version>_amd64.deb is the
 # version-specific redirect target and IS stable.
-TEAMVIEWER_VERSION=15.76.5
+TEAMVIEWER_VERSION=15.78.3
 TEAMVIEWER_DEB_URL="https://dl.teamviewer.com/download/linux/version_15x/teamviewer_${TEAMVIEWER_VERSION}_amd64.deb"
-TEAMVIEWER_DEB_SHA256=8e5b19ac8860272a0842164f67568c03f369b0cfc9a0056dc352bb0a22774b99
+TEAMVIEWER_DEB_SHA256=c2b98b22bf2a34bbdf5b930c8fa7da17fba195d83d0e3f9e0e695c9043aa9e6a
 
 # -- Developer toolchain (intentionally unpinned) ------------------------------
 # scripts/11_install_developer_toolchain.sh installs four components that are

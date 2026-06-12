@@ -30,6 +30,10 @@
 #      it appears in your account's device list under its hostname — any
 #      TeamViewer client signed into the same account connects by clicking
 #      that entry, with no per-device password and no TeamViewer ID to type.
+#   5. Harden the account (Easy Access makes the ACCOUNT the key to this box):
+#      two-factor auth on the account AND for connections; Allowlist set to
+#      ONLY your own account; disable the random/unattended password; enable
+#      sign-in/connection email alerts; keep Trusted Devices on.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
@@ -111,4 +115,12 @@ Manual GUI steps (cannot be automated):
      it appears in your account's device list under its hostname — any
      TeamViewer client signed into the same account connects by clicking
      that entry, with no per-device password and no TeamViewer ID to type.
+  5. Harden the account — with Easy Access the ACCOUNT is the key to this box:
+       - Two-factor auth on the account (Account -> Security), AND two-factor
+         for CONNECTIONS so each inbound session is approved on your phone.
+       - Allowlist (Extras -> Options -> Security -> Block and Allowlist ->
+         "Allow access only for the following partners") -> add ONLY your own
+         account, so knowing this device's ID is not enough to connect.
+       - Disable the random/personal unattended password so account auth is the
+         sole path; enable connection/sign-in email alerts; keep Trusted Devices on.
 MANUAL
