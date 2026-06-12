@@ -14,7 +14,7 @@ Every package and downloaded asset is **pinned to an exact version** in [`script
 
 This box is a hybrid-graphics build: discrete NVIDIA GPU (RTX 5090) **plus** a CPU with an integrated GPU (iGPU). **Both are required**, and they have non-interchangeable roles.
 
-**The monitor — and the EDID DisplayPort emulator from [§16](#16-edid-displayport-emulator-hardware) — must be plugged into the motherboard's video output, NOT the GPU's.** Repeat: cable into the motherboard's back-panel HDMI/DisplayPort, not the RTX's outputs.
+**The monitor — and the EDID DisplayPort emulator from [§15](#15-edid-displayport-emulator-hardware) — must be plugged into the motherboard's video output, NOT the GPU's.** Repeat: cable into the motherboard's back-panel HDMI/DisplayPort, not the RTX's outputs.
 
 Reasons this matters:
 
@@ -116,16 +116,16 @@ Boot from the USB stick. In the live-image session before installation:
 1. **When prompted *"a newer installer is available — Update?"*, click yes.** The updater pulls a newer `ubuntu-desktop-installer` snap. This is fine; it does NOT change the default-display-server policy or the resulting software stack — that's decided post-install by the gdm3 udev rule from [§0](#0-why-xorg-only), regardless of installer version. (We confirmed this empirically during the reference setup.)
 2. Choose **"Erase disk and install Ubuntu"** for the install method (this guide assumes a single-purpose box, no dual-boot).
 3. Check **"Install third-party software for graphics and Wi-Fi hardware and additional media formats"**. This is critical — it pulls in:
-   - **The NVIDIA proprietary driver** out of `multiverse` (the `nvidia-driver-XXX-open` metapackage on the current branch — 595 at time of writing). Without this, the install lands on `nouveau` and `nvidia-smi` is unavailable until you run [§10](#10-nvidia-driver-and-dkms) by hand.
+   - **The NVIDIA proprietary driver** out of `multiverse` (the `nvidia-driver-XXX-open` metapackage on the current branch — 595 at time of writing). Without this, the install lands on `nouveau` and `nvidia-smi` is unavailable until you run [§9](#9-nvidia-driver-and-dkms) by hand.
    - **Wi-Fi and Bluetooth firmware blobs** that are not in `main`.
    - **Restricted media codecs** (MP3, AAC, H.264 userland) for desktop usability.
 
-   You'll still run [§10](#10-nvidia-driver-and-dkms) afterwards to add DKMS and pin the driver branch — the third-party checkbox installs the driver but does NOT install DKMS, which is what makes the kernel module survive kernel upgrades.
+   You'll still run [§9](#9-nvidia-driver-and-dkms) afterwards to add DKMS and pin the driver branch — the third-party checkbox installs the driver but does NOT install DKMS, which is what makes the kernel module survive kernel upgrades.
 
 After install completes and the box reboots:
 
-- The session lands at **Xorg automatically.** This is the gdm3 udev rule from [§0](#0-why-xorg-only) detecting the now-loaded `nvidia` kernel module and writing `PreferredDisplayServer=xorg` into `/run/gdm/custom.conf` at every boot. You don't have to do anything to get here — it's the default for any NVIDIA-on-noble-updates install since 2025-01-20. Verify with [§5](#5-validate-xorg-session) before proceeding.
-- The **GDM greeter (the login screen itself), however, is still Wayland by default** — that's a separate decision from the user-session policy. TeamViewer needs the greeter reachable too, and you'd be locked out remotely if autologin ever fails. We patch that in [§6](#6-gdm-greeter-on-xorg) by uncommenting `WaylandEnable=false` in `/etc/gdm3/custom.conf`.
+- The session lands at **Xorg automatically.** This is the gdm3 udev rule from [§0](#0-why-xorg-only) detecting the now-loaded `nvidia` kernel module and writing `PreferredDisplayServer=xorg` into `/run/gdm/custom.conf` at every boot. You don't have to do anything to get here — it's the default for any NVIDIA-on-noble-updates install since 2025-01-20. Verify with [§4](#4-validate-xorg-session) before proceeding.
+- The **GDM greeter (the login screen itself), however, is still Wayland by default** — that's a separate decision from the user-session policy. TeamViewer needs the greeter reachable too, and you'd be locked out remotely if autologin ever fails. We patch that in [§5](#5-gdm-greeter-on-xorg) by uncommenting `WaylandEnable=false` in `/etc/gdm3/custom.conf`.
 
 After the first reboot, log into your account, open a terminal, and clone this repository to start running the numbered scripts.
 
@@ -169,42 +169,7 @@ After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude
 
 ---
 
-## 4. Static IP
-
-The router's DMZ rule needs a fixed target. Set a static IPv4 on the wireless interface:
-
-```bash
-sudo bash scripts/01_set_static_ip.sh                   # defaults to 10.0.0.200
-sudo bash scripts/01_set_static_ip.sh 10.0.0.199        # explicit (e.g., second box on same LAN)
-```
-
-Reference: [`scripts/01_set_static_ip.sh`](./scripts/01_set_static_ip.sh). All validation runs up front before anything is touched: target IP is well-formed (no network/broadcast/loopback values); exactly one active wireless connection exists (script refuses to guess between several); the wireless interface link is `UP` with carrier; the system's default route is on that wireless interface (not some other NIC); the target IP is on the same /24 as the gateway; and the target IP doesn't currently respond to ping (not in use). After validation, the script switches the profile from DHCP to manual, cycles the connection, and rolls back to DHCP automatically if either the IP doesn't take or internet becomes unreachable.
-
-After it succeeds, **update the router's DMZ target on the router admin UI** to match the new IP. The script cannot do that for you. Until that's done, the box is on LAN only — which is exactly what you want for the remaining setup steps.
-
----
-
-## 4a. Switch to Ethernet (optional)
-
-**Optional.** Only if you'd rather run this box on Ethernet than Wi-Fi. The static IP stays the same — the router's DMZ rule from [§18](#18-router-dmz-configuration) does not need to change. After it runs, the box is reachable on Ethernet at the same IP and Wi-Fi is off (recoverable in one command, see below).
-
-```bash
-sudo bash scripts/13_migrate_static_ip_wifi_to_ethernet.sh 10.0.0.199
-```
-
-Reference: [`scripts/13_migrate_static_ip_wifi_to_ethernet.sh`](./scripts/13_migrate_static_ip_wifi_to_ethernet.sh). Atomically moves the static IP from Wi-Fi to Ethernet, sets the Wi-Fi profile back to DHCP, and disables the Wi-Fi radio. Heavily opinionated: refuses to run unless the system is in exactly the expected post-§4 state — Ubuntu noble, NetworkManager only (no rival `systemd-networkd`), exactly one Wi-Fi device and one *hardware* Ethernet device (Docker veth pairs filtered out), exactly one active wireless and one active wired connection bound to those devices, the Wi-Fi profile carrying `ipv4.method=manual` with the supplied IP, the Ethernet profile carrying `ipv4.method=auto` with a current DHCP lease and no leftover static fields, the target IP currently held only by Wi-Fi, and the default route reachable. After validation, profile changes are staged, Wi-Fi is cycled to DHCP, Ethernet is cycled to claim the static IP, and the kernel routing path and gateway/internet pings are re-checked specifically bound to the Ethernet interface. Any failure during the swap triggers automatic rollback to the original state (Wi-Fi static + Ethernet DHCP). Only after the swap verifies end-to-end does the script run `nmcli radio wifi off`, which writes `WirelessEnabled=false` to `/var/lib/NetworkManager/NetworkManager.state` — survives reboots. The wifi-disable step itself is warn-only by design: once the swap is committed, radio-toggle anomalies do not fail the script.
-
-To reverse — turn Wi-Fi back on at any time, with no other changes:
-
-```bash
-sudo nmcli radio wifi on
-```
-
-The Wi-Fi profile is preserved on disk (rewritten to DHCP by the swap), so Wi-Fi auto-ups at a DHCP-assigned address — not the static IP, which is now Ethernet's.
-
----
-
-## 5. Validate Xorg session
+## 4. Validate Xorg session
 
 Before running any other script, confirm you are in an Xorg session:
 
@@ -218,7 +183,7 @@ If this fails, see [§0](#0-why-xorg-only).
 
 ---
 
-## 6. GDM greeter on Xorg
+## 5. GDM greeter on Xorg
 
 The gdm3 patch from [§0](#0-why-xorg-only) covers the **user session** but not the **GDM greeter** (the login screen itself, before any user logs in). The greeter still defaults to Wayland. TeamViewer needs the greeter on Xorg too — during the brief greeter window after each reboot it has no X server to attach to, and if autologin ever fails, you would be locked out remotely.
 
@@ -232,7 +197,7 @@ Reference: [`scripts/03_configure_gdm_xorg.sh`](./scripts/03_configure_gdm_xorg.
 
 ---
 
-## 7. Disable Avahi (mDNS / Bonjour / Zeroconf)
+## 6. Disable Avahi (mDNS / Bonjour / Zeroconf)
 
 Avahi advertises and discovers services on the LAN via multicast UDP 5353. On a server intentionally exposed via DMZ to the public internet, this is purely attack surface.
 
@@ -244,7 +209,7 @@ Reference: [`scripts/04_disable_avahi.sh`](./scripts/04_disable_avahi.sh). Handl
 
 ---
 
-## 8. /tmp cleanup policy
+## 7. /tmp cleanup policy
 
 Default Ubuntu purges `/tmp` on every boot and removes files older than 30 days. Override that to keep `/tmp` across reboots and extend the cleanup window to 90 days:
 
@@ -256,7 +221,7 @@ Reference: [`scripts/05_configure_tmp_cleanup.sh`](./scripts/05_configure_tmp_cl
 
 ---
 
-## 9. OpenSSH server
+## 8. OpenSSH server
 
 ```bash
 sudo bash scripts/06_install_openssh_server.sh
@@ -270,7 +235,7 @@ This script does not change SSH authentication policy. `/etc/ssh/sshd_config` an
 
 ---
 
-## 10. NVIDIA driver and DKMS
+## 9. NVIDIA driver and DKMS
 
 ```bash
 sudo bash scripts/07_install_nvidia_driver.sh
@@ -288,7 +253,7 @@ The script then runs `nvidia-smi` and confirms `dkms status` reports an `nvidia/
 
 ---
 
-## 11. CUDA Toolkit (host) — optional
+## 10. CUDA Toolkit (host) — optional
 
 If you intend to compile CUDA code on the host, install the toolkit:
 
@@ -300,11 +265,11 @@ Reference: [`scripts/08_install_cuda_toolkit.sh`](./scripts/08_install_cuda_tool
 
 After it finishes, open a new shell (or `source ~/.bashrc`) so `nvcc` is on `PATH`.
 
-Pre-built CUDA workloads (binaries shipping their own CUDA runtime libs, containers built `FROM nvidia/cuda:...`) do not need this — only the driver from [§10](#10-nvidia-driver-and-dkms). Skip this section if your only host-side CUDA need is running, not compiling.
+Pre-built CUDA workloads (binaries shipping their own CUDA runtime libs, containers built `FROM nvidia/cuda:...`) do not need this — only the driver from [§9](#9-nvidia-driver-and-dkms). Skip this section if your only host-side CUDA need is running, not compiling.
 
 ---
 
-## 12. Docker
+## 11. Docker
 
 ```bash
 sudo bash scripts/09_install_docker.sh
@@ -314,7 +279,7 @@ Reference: [`scripts/09_install_docker.sh`](./scripts/09_install_docker.sh). Ins
 
 After it finishes, **log out and back in** (or run `newgrp docker`) so your shell picks up the `docker` group membership and you can run `docker` without sudo.
 
-We use `docker-ce` from `download.docker.com` rather than `docker.io` from Ubuntu's universe pocket because the [NVIDIA Container Toolkit](#13-nvidia-container-toolkit) (next section) is officially tested against `docker-ce`, the Compose plugin and Buildx plugin track `docker-ce`'s release cadence, and security advisories track upstream.
+We use `docker-ce` from `download.docker.com` rather than `docker.io` from Ubuntu's universe pocket because the [NVIDIA Container Toolkit](#12-nvidia-container-toolkit) (next section) is officially tested against `docker-ce`, the Compose plugin and Buildx plugin track `docker-ce`'s release cadence, and security advisories track upstream.
 
 ### Operational rule for this DMZ-exposed host (non-negotiable)
 
@@ -329,7 +294,7 @@ Membership in the `docker` group is **root-equivalent**. Anyone who can write to
 
 ---
 
-## 13. NVIDIA Container Toolkit
+## 12. NVIDIA Container Toolkit
 
 ```bash
 sudo bash scripts/10_install_nvidia_container_toolkit.sh
@@ -345,7 +310,7 @@ The container's `nvidia-smi` should print the same RTX and driver/CUDA version a
 
 ---
 
-## 14. TeamViewer
+## 13. TeamViewer
 
 ```bash
 sudo bash scripts/11_install_teamviewer.sh
@@ -366,7 +331,7 @@ The `.deb` postinst enables `teamviewerd.service` for boot, but that alone is **
 
 ---
 
-## 15. Developer toolchain
+## 14. Developer toolchain
 
 ```bash
 sudo bash scripts/12_install_developer_toolchain.sh
@@ -420,7 +385,7 @@ After install, future `apt upgrade` keeps VS Code current automatically.
 
 ---
 
-## 16. EDID DisplayPort emulator (hardware)
+## 15. EDID DisplayPort emulator (hardware)
 
 When the physical monitor is powered off, both Xorg and Wayland drop the GPU's display output and render a black screen — TeamViewer connects to a session with no pixels. The fix is a hardware **EDID DisplayPort emulator** (~$10 on Amazon): a small dongle that plugs into a free DisplayPort or HDMI on the GPU and presents a permanent fake EDID, making the GPU believe a monitor is always connected.
 
@@ -428,9 +393,9 @@ This is hardware, not software — no script. Buy one and plug it in.
 
 ---
 
-## 17. Network security verification
+## 16. Network security verification
 
-Before flipping the router DMZ, run the verification audit:
+This is the last hardening gate before the box is exposed. Run the local audit now, while it still sits on a DHCP address — before it takes its public-facing static IP in [§17](#17-static-ip) and the DMZ goes live:
 
 ```bash
 sudo python3 ./network_security/verify_network_security.py
@@ -459,11 +424,34 @@ Reference: [`network_security/remote_port_tester.py`](./network_security/remote_
 
 ---
 
+## 17. Static IP
+
+Everything up to here hardened the box while it sat on a DHCP lease — present on the LAN, but unreachable from the internet. This step is deliberately last, because the router's DMZ forwards every inbound connection to one fixed IP, so **the moment this box claims that IP it is live on the public internet.** Doing it now — after the hardening steps and the local audit in [§16](#16-network-security-verification) — means the box is already locked down the instant it is exposed, not part-way through setup.
+
+Set a static IPv4 on the Ethernet interface, then disable Wi-Fi so the box lives on the wire:
+
+```bash
+sudo bash scripts/13_set_static_ip.sh                   # defaults to 10.0.0.200
+sudo bash scripts/13_set_static_ip.sh 10.0.0.199        # explicit (e.g., second box on same LAN)
+```
+
+Reference: [`scripts/13_set_static_ip.sh`](./scripts/13_set_static_ip.sh). All validation runs up front before anything is touched: Ubuntu noble with NetworkManager as the sole network manager (no rival `systemd-networkd`); the target IP is well-formed (no network/broadcast/loopback values); exactly one *hardware* Ethernet device (Docker veth pairs filtered out) with exactly one active wired connection bound to it; the Ethernet link has carrier (cable plugged in); a default route runs through that Ethernet interface and its gateway is reachable; the target IP is on the same /24 as the gateway; and the target IP doesn't currently respond to ping (not in use by another host). After validation, the script switches the Ethernet profile from DHCP to manual and cycles the connection — Wi-Fi, if still up, carries traffic during the brief Ethernet-down window — then verifies end-to-end on Ethernet: the target IP is held only by Ethernet, the kernel routes outbound via Ethernet, and the gateway and internet both answer when pinged bound to the Ethernet interface. Any failure rolls the profile back to DHCP automatically. Re-running once the static IP is already in place is a no-op.
+
+Only after the static IP verifies does the script disable the Wi-Fi radio with `nmcli radio wifi off`, writing `WirelessEnabled=false` to `/var/lib/NetworkManager/NetworkManager.state` so it survives reboots. That final step is warn-only: once the static IP is committed, a radio-toggle anomaly does not fail the run. Wi-Fi is reversible at any time, with no other changes:
+
+```bash
+sudo nmcli radio wifi on
+```
+
+If your router's DMZ already targets this IP, the box is now live on the public internet — go straight to the external verification in [§18](#18-router-dmz-configuration). If it doesn't yet, set it there.
+
+---
+
 ## 18. Router DMZ configuration
 
-Manual step on the router admin UI. Set the DMZ host to the static IP from [§4](#4-static-ip). Verify the router forwards all incoming connections (TCP, UDP, ICMP) to that IP.
+Manual step on the router admin UI. Point the DMZ host at the static IP from [§17](#17-static-ip) — or, if it already points there, just confirm it. Verify the router forwards all incoming connections (TCP, UDP, ICMP) to that IP.
 
-After this, the box is on the public internet. Re-run the external port tester from [§17](#17-network-security-verification) to confirm only port 22 (SSH) answers.
+The box is now on the public internet — it became reachable the moment it claimed the IP in [§17](#17-static-ip). Re-run the external port tester from [§16](#16-network-security-verification), off-LAN, to confirm only port 22 (SSH) answers.
 
 ---
 
@@ -486,20 +474,19 @@ After this, the box is on the public internet. Re-run the external port tester f
 │   │   ├── common.sh                          # shared helpers; sourced by all numbered scripts
 │   │   └── versions.sh                        # pinned versions of every package/asset (see §0a)
 │   ├── 00_install_claude_code.sh              # §3
-│   ├── 01_set_static_ip.sh                    # §4
-│   ├── 02_validate_xorg_session.sh            # §5
-│   ├── 03_configure_gdm_xorg.sh               # §6
-│   ├── 04_disable_avahi.sh                    # §7
-│   ├── 05_configure_tmp_cleanup.sh            # §8
-│   ├── 06_install_openssh_server.sh           # §9
-│   ├── 07_install_nvidia_driver.sh            # §10
-│   ├── 08_install_cuda_toolkit.sh             # §11
-│   ├── 09_install_docker.sh                   # §12
-│   ├── 10_install_nvidia_container_toolkit.sh # §13
-│   ├── 11_install_teamviewer.sh               # §14
-│   ├── 12_install_developer_toolchain.sh      # §15
-│   └── 13_migrate_static_ip_wifi_to_ethernet.sh # §4a (optional)
-├── network_security/                          # §17, audit and verify tools
+│   ├── 02_validate_xorg_session.sh            # §4
+│   ├── 03_configure_gdm_xorg.sh               # §5
+│   ├── 04_disable_avahi.sh                    # §6
+│   ├── 05_configure_tmp_cleanup.sh            # §7
+│   ├── 06_install_openssh_server.sh           # §8
+│   ├── 07_install_nvidia_driver.sh            # §9
+│   ├── 08_install_cuda_toolkit.sh             # §10
+│   ├── 09_install_docker.sh                   # §11
+│   ├── 10_install_nvidia_container_toolkit.sh # §12
+│   ├── 11_install_teamviewer.sh               # §13
+│   ├── 12_install_developer_toolchain.sh      # §14
+│   └── 13_set_static_ip.sh                    # §17
+├── network_security/                          # §16, audit and verify tools
 │   ├── README.md
 │   ├── verify_network_security.py
 │   ├── apply_vmware_firewall.py
