@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/03_configure_gdm_xorg.sh — force GDM's greeter (login screen) to use Xorg.
+# scripts/02_configure_gdm_xorg.sh — force GDM's greeter (login screen) to use Xorg.
 #
 # Even after the gdm3 noble-updates patch forces Xorg as the default user
 # session on NVIDIA hardware (see README §0), the GDM greeter — the login
@@ -13,7 +13,7 @@
 # which tells GDM to use Xorg for the greeter as well. Effective on next reboot.
 #
 # Usage:
-#   sudo bash scripts/03_configure_gdm_xorg.sh
+#   sudo bash scripts/02_configure_gdm_xorg.sh
 #
 # Side effects:
 #   - Backs up /etc/gdm3/custom.conf to /etc/gdm3/custom.conf.bak-<timestamp>.

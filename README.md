@@ -44,7 +44,7 @@ After install, sanity-check that you got it right: `nvidia-smi` should show **on
 
 VRAM cost of Xorg on this hardware is negligible: measured ~4 MiB on idle RTX 5090 — but **only because the display is wired into the iGPU's motherboard output** (see [Hardware prerequisites](#hardware-prerequisites-read-this-first) above). The desktop renders through the Intel iGPU and the NVIDIA card stays free for compute. Cable into the GPU instead and the "Xorg eats VRAM" folklore becomes real.
 
-The first runtime check in this repo — [`scripts/02_validate_xorg_session.sh`](./scripts/02_validate_xorg_session.sh) — refuses to proceed if `XDG_SESSION_TYPE` is anything but `x11`. Run it after every login before doing anything else.
+The first runtime check in this repo — [`scripts/01_validate_xorg_session.sh`](./scripts/01_validate_xorg_session.sh) — refuses to proceed if `XDG_SESSION_TYPE` is anything but `x11`. Run it after every login before doing anything else.
 
 ---
 
@@ -71,7 +71,7 @@ To upgrade a component:
 3. Re-run [`network_security/verify_network_security.py`](./network_security/verify_network_security.py) to confirm posture is unchanged.
 4. Commit.
 
-The NVIDIA driver branch is overridable via the `DRIVER_BRANCH` env var (e.g., `sudo DRIVER_BRANCH=600 bash scripts/07_install_nvidia_driver.sh`). When overridden, the per-package version pins are intentionally skipped — opting into a different branch is opting out of pinning, with a warning logged.
+The NVIDIA driver branch is overridable via the `DRIVER_BRANCH` env var (e.g., `sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh`). When overridden, the per-package version pins are intentionally skipped — opting into a different branch is opting out of pinning, with a warning logged.
 
 ---
 
@@ -174,10 +174,10 @@ After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude
 Before running any other script, confirm you are in an Xorg session:
 
 ```bash
-bash scripts/02_validate_xorg_session.sh
+bash scripts/01_validate_xorg_session.sh
 ```
 
-Reference: [`scripts/02_validate_xorg_session.sh`](./scripts/02_validate_xorg_session.sh). Also rejects hybrid Wayland-with-Xwayland sessions and runs a sanity check that an `Xorg` process is present.
+Reference: [`scripts/01_validate_xorg_session.sh`](./scripts/01_validate_xorg_session.sh). Also rejects hybrid Wayland-with-Xwayland sessions and runs a sanity check that an `Xorg` process is present.
 
 If this fails, see [§0](#0-why-xorg-only).
 
@@ -190,10 +190,10 @@ The gdm3 patch from [§0](#0-why-xorg-only) covers the **user session** but not 
 Force the greeter to Xorg:
 
 ```bash
-sudo bash scripts/03_configure_gdm_xorg.sh
+sudo bash scripts/02_configure_gdm_xorg.sh
 ```
 
-Reference: [`scripts/03_configure_gdm_xorg.sh`](./scripts/03_configure_gdm_xorg.sh). Backs up `/etc/gdm3/custom.conf`, uncomments the `WaylandEnable=false` line, leaves the change to take effect on next reboot. **Does not restart `gdm3`** — restarting it would kill your active session.
+Reference: [`scripts/02_configure_gdm_xorg.sh`](./scripts/02_configure_gdm_xorg.sh). Backs up `/etc/gdm3/custom.conf`, uncomments the `WaylandEnable=false` line, leaves the change to take effect on next reboot. **Does not restart `gdm3`** — restarting it would kill your active session.
 
 ---
 
@@ -202,10 +202,10 @@ Reference: [`scripts/03_configure_gdm_xorg.sh`](./scripts/03_configure_gdm_xorg.
 Avahi advertises and discovers services on the LAN via multicast UDP 5353. On a server intentionally exposed via DMZ to the public internet, this is purely attack surface.
 
 ```bash
-sudo bash scripts/04_disable_avahi.sh
+sudo bash scripts/03_disable_avahi.sh
 ```
 
-Reference: [`scripts/04_disable_avahi.sh`](./scripts/04_disable_avahi.sh). Handles a non-obvious socket-activation race: the naive `stop → mask` sequence races against the still-listening `avahi-daemon.socket`, which can re-trigger the daemon mid-shutdown. The script masks first, then stops, then sends SIGTERM/SIGKILL to any straggler, then verifies port 5353/udp is closed.
+Reference: [`scripts/03_disable_avahi.sh`](./scripts/03_disable_avahi.sh). Handles a non-obvious socket-activation race: the naive `stop → mask` sequence races against the still-listening `avahi-daemon.socket`, which can re-trigger the daemon mid-shutdown. The script masks first, then stops, then sends SIGTERM/SIGKILL to any straggler, then verifies port 5353/udp is closed.
 
 ---
 
@@ -214,20 +214,20 @@ Reference: [`scripts/04_disable_avahi.sh`](./scripts/04_disable_avahi.sh). Handl
 Default Ubuntu purges `/tmp` on every boot and removes files older than 30 days. Override that to keep `/tmp` across reboots and extend the cleanup window to 90 days:
 
 ```bash
-sudo bash scripts/05_configure_tmp_cleanup.sh
+sudo bash scripts/04_configure_tmp_cleanup.sh
 ```
 
-Reference: [`scripts/05_configure_tmp_cleanup.sh`](./scripts/05_configure_tmp_cleanup.sh).
+Reference: [`scripts/04_configure_tmp_cleanup.sh`](./scripts/04_configure_tmp_cleanup.sh).
 
 ---
 
 ## 8. OpenSSH server
 
 ```bash
-sudo bash scripts/06_install_openssh_server.sh
+sudo bash scripts/05_install_openssh_server.sh
 ```
 
-Reference: [`scripts/06_install_openssh_server.sh`](./scripts/06_install_openssh_server.sh). Installs `openssh-server`, then verifies `ssh.socket` is enabled and active and that port 22 is listening.
+Reference: [`scripts/05_install_openssh_server.sh`](./scripts/05_install_openssh_server.sh). Installs `openssh-server`, then verifies `ssh.socket` is enabled and active and that port 22 is listening.
 
 `openssh-server` on Ubuntu 24.04 is **socket-activated**: `ssh.socket` listens on port 22 from boot, and `ssh.service` is spawned only when a connection arrives. So `systemctl is-active ssh.service` will show `inactive` between connections — that is the correct steady state, not a misconfiguration. The Settings → Sharing → Remote Login GUI toggle is a redundant no-op under socket activation. The script does neither.
 
@@ -238,12 +238,12 @@ This script does not change SSH authentication policy. `/etc/ssh/sshd_config` an
 ## 9. NVIDIA driver and DKMS
 
 ```bash
-sudo bash scripts/07_install_nvidia_driver.sh
+sudo bash scripts/06_install_nvidia_driver.sh
 # or, if Canonical has shipped a newer branch in noble multiverse-updates:
-sudo DRIVER_BRANCH=600 bash scripts/07_install_nvidia_driver.sh
+sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh
 ```
 
-Reference: [`scripts/07_install_nvidia_driver.sh`](./scripts/07_install_nvidia_driver.sh). Installs three packages on the chosen branch (default 595):
+Reference: [`scripts/06_install_nvidia_driver.sh`](./scripts/06_install_nvidia_driver.sh). Installs three packages on the chosen branch (default 595):
 
 - `nvidia-driver-${BRANCH}-open` — the proprietary driver in its open-kernel-module variant.
 - `nvidia-dkms-${BRANCH}-open` — DKMS hookup so the kernel module rebuilds on every kernel upgrade. **The "Install third-party software" checkbox during Ubuntu install does NOT install this; it must be added explicitly.**
@@ -258,10 +258,10 @@ The script then runs `nvidia-smi` and confirms `dkms status` reports an `nvidia/
 If you intend to compile CUDA code on the host, install the toolkit:
 
 ```bash
-sudo bash scripts/08_install_cuda_toolkit.sh
+sudo bash scripts/07_install_cuda_toolkit.sh
 ```
 
-Reference: [`scripts/08_install_cuda_toolkit.sh`](./scripts/08_install_cuda_toolkit.sh). Adds NVIDIA's apt source via the canonical `cuda-keyring_1.1-1_all.deb`, installs `cuda-toolkit-13-0` (~3–4 GB), and idempotently appends the `PATH` and `LD_LIBRARY_PATH` exports to your `~/.bashrc`.
+Reference: [`scripts/07_install_cuda_toolkit.sh`](./scripts/07_install_cuda_toolkit.sh). Adds NVIDIA's apt source via the canonical `cuda-keyring_1.1-1_all.deb`, installs `cuda-toolkit-13-0` (~3–4 GB), and idempotently appends the `PATH` and `LD_LIBRARY_PATH` exports to your `~/.bashrc`.
 
 After it finishes, open a new shell (or `source ~/.bashrc`) so `nvcc` is on `PATH`.
 
@@ -272,10 +272,10 @@ Pre-built CUDA workloads (binaries shipping their own CUDA runtime libs, contain
 ## 11. Docker
 
 ```bash
-sudo bash scripts/09_install_docker.sh
+sudo bash scripts/08_install_docker.sh
 ```
 
-Reference: [`scripts/09_install_docker.sh`](./scripts/09_install_docker.sh). Installs `docker-ce` from Docker's official repository in Deb822 source format, then adds your user to the `docker` group and enables `docker.service` + `containerd.service`.
+Reference: [`scripts/08_install_docker.sh`](./scripts/08_install_docker.sh). Installs `docker-ce` from Docker's official repository in Deb822 source format, then adds your user to the `docker` group and enables `docker.service` + `containerd.service`.
 
 After it finishes, **log out and back in** (or run `newgrp docker`) so your shell picks up the `docker` group membership and you can run `docker` without sudo.
 
@@ -297,10 +297,10 @@ Membership in the `docker` group is **root-equivalent**. Anyone who can write to
 ## 12. NVIDIA Container Toolkit
 
 ```bash
-sudo bash scripts/10_install_nvidia_container_toolkit.sh
+sudo bash scripts/09_install_nvidia_container_toolkit.sh
 ```
 
-Reference: [`scripts/10_install_nvidia_container_toolkit.sh`](./scripts/10_install_nvidia_container_toolkit.sh). Installs the toolkit, runs `nvidia-ctk runtime configure --runtime=docker` (writes the `nvidia` runtime entry into `/etc/docker/daemon.json`), restarts Docker, and runs an end-to-end smoke test:
+Reference: [`scripts/09_install_nvidia_container_toolkit.sh`](./scripts/09_install_nvidia_container_toolkit.sh). Installs the toolkit, runs `nvidia-ctk runtime configure --runtime=docker` (writes the `nvidia` runtime entry into `/etc/docker/daemon.json`), restarts Docker, and runs an end-to-end smoke test:
 
 ```
 docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi
@@ -313,10 +313,10 @@ The container's `nvidia-smi` should print the same RTX and driver/CUDA version a
 ## 13. TeamViewer
 
 ```bash
-sudo bash scripts/11_install_teamviewer.sh
+sudo bash scripts/10_install_teamviewer.sh
 ```
 
-Reference: [`scripts/11_install_teamviewer.sh`](./scripts/11_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.76.5`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.76.5`, installs via `apt install ./<deb>`. Full client, not the host-only build.
+Reference: [`scripts/10_install_teamviewer.sh`](./scripts/10_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.76.5`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.76.5`, installs via `apt install ./<deb>`. Full client, not the host-only build.
 
 After install, `teamviewerd` listens on `127.0.0.1:5939` only (localhost). TeamViewer reaches its cloud relay infrastructure via outbound connections; no inbound exposure is required or desired. The script verifies the listener is on 127.0.0.1 and aborts loud if it ever appears on `0.0.0.0`.
 
@@ -334,10 +334,10 @@ The `.deb` postinst enables `teamviewerd.service` for boot, but that alone is **
 ## 14. Developer toolchain
 
 ```bash
-sudo bash scripts/12_install_developer_toolchain.sh
+sudo bash scripts/11_install_developer_toolchain.sh
 ```
 
-Reference: [`scripts/12_install_developer_toolchain.sh`](./scripts/12_install_developer_toolchain.sh). Installs four developer-toolchain components in sequence. All four are **intentionally unpinned** — each tracks its own upstream channel (apt, rustup, `uv self update`, `apt upgrade`), and pinning here would defeat the point. The script is idempotent: re-running updates each component in place rather than failing.
+Reference: [`scripts/11_install_developer_toolchain.sh`](./scripts/11_install_developer_toolchain.sh). Installs four developer-toolchain components in sequence. All four are **intentionally unpinned** — each tracks its own upstream channel (apt, rustup, `uv self update`, `apt upgrade`), and pinning here would defeat the point. The script is idempotent: re-running updates each component in place rather than failing.
 
 ### apt dev tools
 
@@ -431,11 +431,11 @@ Everything up to here hardened the box while it sat on a DHCP lease — present 
 Set a static IPv4 on the Ethernet interface, then disable Wi-Fi so the box lives on the wire:
 
 ```bash
-sudo bash scripts/13_set_static_ip.sh                   # defaults to 10.0.0.200
-sudo bash scripts/13_set_static_ip.sh 10.0.0.199        # explicit (e.g., second box on same LAN)
+sudo bash scripts/12_set_static_ip.sh                   # defaults to 10.0.0.200
+sudo bash scripts/12_set_static_ip.sh 10.0.0.199        # explicit (e.g., second box on same LAN)
 ```
 
-Reference: [`scripts/13_set_static_ip.sh`](./scripts/13_set_static_ip.sh). All validation runs up front before anything is touched: Ubuntu noble with NetworkManager as the sole network manager (no rival `systemd-networkd`); the target IP is well-formed (no network/broadcast/loopback values); exactly one *hardware* Ethernet device (Docker veth pairs filtered out) with exactly one active wired connection bound to it; the Ethernet link has carrier (cable plugged in); a default route runs through that Ethernet interface and its gateway is reachable; the target IP is on the same /24 as the gateway; and the target IP doesn't currently respond to ping (not in use by another host). After validation, the script switches the Ethernet profile from DHCP to manual and cycles the connection — Wi-Fi, if still up, carries traffic during the brief Ethernet-down window — then verifies end-to-end on Ethernet: the target IP is held only by Ethernet, the kernel routes outbound via Ethernet, and the gateway and internet both answer when pinged bound to the Ethernet interface. Any failure rolls the profile back to DHCP automatically. Re-running once the static IP is already in place is a no-op.
+Reference: [`scripts/12_set_static_ip.sh`](./scripts/12_set_static_ip.sh). All validation runs up front before anything is touched: Ubuntu noble with NetworkManager as the sole network manager (no rival `systemd-networkd`); the target IP is well-formed (no network/broadcast/loopback values); exactly one *hardware* Ethernet device (Docker veth pairs filtered out) with exactly one active wired connection bound to it; the Ethernet link has carrier (cable plugged in); a default route runs through that Ethernet interface and its gateway is reachable; the target IP is on the same /24 as the gateway; and the target IP doesn't currently respond to ping (not in use by another host). After validation, the script switches the Ethernet profile from DHCP to manual and cycles the connection — Wi-Fi, if still up, carries traffic during the brief Ethernet-down window — then verifies end-to-end on Ethernet: the target IP is held only by Ethernet, the kernel routes outbound via Ethernet, and the gateway and internet both answer when pinged bound to the Ethernet interface. Any failure rolls the profile back to DHCP automatically. Re-running once the static IP is already in place is a no-op.
 
 Only after the static IP verifies does the script disable the Wi-Fi radio with `nmcli radio wifi off`, writing `WirelessEnabled=false` to `/var/lib/NetworkManager/NetworkManager.state` so it survives reboots. That final step is warn-only: once the static IP is committed, a radio-toggle anomaly does not fail the run. Wi-Fi is reversible at any time, with no other changes:
 
@@ -474,18 +474,18 @@ The box is now on the public internet — it became reachable the moment it clai
 │   │   ├── common.sh                          # shared helpers; sourced by all numbered scripts
 │   │   └── versions.sh                        # pinned versions of every package/asset (see §0a)
 │   ├── 00_install_claude_code.sh              # §3
-│   ├── 02_validate_xorg_session.sh            # §4
-│   ├── 03_configure_gdm_xorg.sh               # §5
-│   ├── 04_disable_avahi.sh                    # §6
-│   ├── 05_configure_tmp_cleanup.sh            # §7
-│   ├── 06_install_openssh_server.sh           # §8
-│   ├── 07_install_nvidia_driver.sh            # §9
-│   ├── 08_install_cuda_toolkit.sh             # §10
-│   ├── 09_install_docker.sh                   # §11
-│   ├── 10_install_nvidia_container_toolkit.sh # §12
-│   ├── 11_install_teamviewer.sh               # §13
-│   ├── 12_install_developer_toolchain.sh      # §14
-│   └── 13_set_static_ip.sh                    # §17
+│   ├── 01_validate_xorg_session.sh            # §4
+│   ├── 02_configure_gdm_xorg.sh               # §5
+│   ├── 03_disable_avahi.sh                    # §6
+│   ├── 04_configure_tmp_cleanup.sh            # §7
+│   ├── 05_install_openssh_server.sh           # §8
+│   ├── 06_install_nvidia_driver.sh            # §9
+│   ├── 07_install_cuda_toolkit.sh             # §10
+│   ├── 08_install_docker.sh                   # §11
+│   ├── 09_install_nvidia_container_toolkit.sh # §12
+│   ├── 10_install_teamviewer.sh               # §13
+│   ├── 11_install_developer_toolchain.sh      # §14
+│   └── 12_set_static_ip.sh                    # §17
 ├── network_security/                          # §16, audit and verify tools
 │   ├── README.md
 │   ├── verify_network_security.py

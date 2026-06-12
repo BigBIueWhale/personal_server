@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/11_install_teamviewer.sh — install TeamViewer (full client) at a pinned version.
+# scripts/10_install_teamviewer.sh — install TeamViewer (full client) at a pinned version.
 #
 # Version, download URL, and SHA-256 are pinned in lib/versions.sh; that file
 # documents why the dl.teamviewer.com URL pattern is what's pinnable.
@@ -15,7 +15,7 @@
 # listener is on 127.0.0.1 and aborts loud if it ever appears on 0.0.0.0.
 #
 # Usage:
-#   sudo bash scripts/11_install_teamviewer.sh
+#   sudo bash scripts/10_install_teamviewer.sh
 #
 # Manual GUI steps after this script (cannot be automated):
 #   1. Launch TeamViewer from the Activities menu.

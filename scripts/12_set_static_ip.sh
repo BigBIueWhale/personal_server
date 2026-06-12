@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/13_set_static_ip.sh — pin this box to a static IPv4 on Ethernet and
+# scripts/12_set_static_ip.sh — pin this box to a static IPv4 on Ethernet and
 # disable Wi-Fi, so it lives on the wire at a fixed address.
 #
 # Required because the router's DMZ rule needs a fixed target. A DHCP-assigned
@@ -38,12 +38,12 @@
 #     partial failure of the radio toggle should not look like a setup failure.
 #
 # Usage:
-#   sudo bash scripts/13_set_static_ip.sh                # defaults to 10.0.0.200
-#   sudo bash scripts/13_set_static_ip.sh <ipv4-address> # explicit
+#   sudo bash scripts/12_set_static_ip.sh                # defaults to 10.0.0.200
+#   sudo bash scripts/12_set_static_ip.sh <ipv4-address> # explicit
 #
 # Examples:
-#   sudo bash scripts/13_set_static_ip.sh                # 10.0.0.200
-#   sudo bash scripts/13_set_static_ip.sh 10.0.0.199     # second box on same LAN
+#   sudo bash scripts/12_set_static_ip.sh                # 10.0.0.200
+#   sudo bash scripts/12_set_static_ip.sh 10.0.0.199     # second box on same LAN
 #
 # After this script succeeds, you must update your router's DMZ target on the
 # router's admin UI to match the new IP. The script cannot do that for you.

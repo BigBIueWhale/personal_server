@@ -10,7 +10,7 @@
 # To upgrade a component:
 #   1. Edit the pin here.
 #   2. Re-run the corresponding script on a test box.
-#   3. Run scripts/02_validate_xorg_session.sh and the network_security audit.
+#   3. Run scripts/01_validate_xorg_session.sh and the network_security audit.
 #   4. Commit the change.
 #
 # The .deb SHA-256 values were computed at the time of original install:
@@ -57,7 +57,7 @@ TEAMVIEWER_DEB_URL="https://dl.teamviewer.com/download/linux/version_15x/teamvie
 TEAMVIEWER_DEB_SHA256=8e5b19ac8860272a0842164f67568c03f369b0cfc9a0056dc352bb0a22774b99
 
 # -- Developer toolchain (intentionally unpinned) ------------------------------
-# scripts/12_install_developer_toolchain.sh installs four components that are
+# scripts/11_install_developer_toolchain.sh installs four components that are
 # DELIBERATELY not version-pinned, because their upstream channels are the
 # right update mechanism:
 #   - apt dev tools  : track noble's normal apt-upgrade flow.

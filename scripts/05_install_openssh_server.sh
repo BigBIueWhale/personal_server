@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/06_install_openssh_server.sh — install and verify openssh-server.
+# scripts/05_install_openssh_server.sh — install and verify openssh-server.
 #
 # On Ubuntu 24.04, openssh-server is socket-activated:
 #   - ssh.socket   listens on port 22 from boot. Enabled by default after install.
@@ -16,7 +16,7 @@
 # and any /etc/ssh/sshd_config.d/*.conf overrides are left alone.
 #
 # Usage:
-#   sudo bash scripts/06_install_openssh_server.sh
+#   sudo bash scripts/05_install_openssh_server.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"

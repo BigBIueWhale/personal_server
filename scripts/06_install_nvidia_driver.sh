@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/07_install_nvidia_driver.sh — install NVIDIA driver, DKMS, and userspace utils.
+# scripts/06_install_nvidia_driver.sh — install NVIDIA driver, DKMS, and userspace utils.
 #
 # This installs the proprietary NVIDIA driver in its 'open' kernel-module
 # variant, plus the DKMS package (so the kernel module rebuilds automatically
@@ -17,8 +17,8 @@
 # matter for surviving kernel upgrades and having nvidia-smi reliably on PATH.
 #
 # Usage:
-#   sudo bash scripts/07_install_nvidia_driver.sh
-#   sudo DRIVER_BRANCH=600 bash scripts/07_install_nvidia_driver.sh   # override
+#   sudo bash scripts/06_install_nvidia_driver.sh
+#   sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh   # override
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"

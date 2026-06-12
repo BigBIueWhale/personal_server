@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/08_install_cuda_toolkit.sh — install the host-side CUDA Toolkit.
+# scripts/07_install_cuda_toolkit.sh — install the host-side CUDA Toolkit.
 #
 # This installs nvcc, CUDA headers, and CUDA libraries for compiling CUDA code
 # natively on the host. Pre-built CUDA workloads (e.g., applications shipped
@@ -16,7 +16,7 @@
 #   5. Verify nvcc -V works under the new PATH.
 #
 # Usage:
-#   sudo bash scripts/08_install_cuda_toolkit.sh
+#   sudo bash scripts/07_install_cuda_toolkit.sh
 #
 # After this script succeeds, open a new shell (or 'source ~/.bashrc') so
 # nvcc is on PATH.
@@ -30,7 +30,7 @@ require_ubuntu_noble
 require_command wget
 require_command dpkg
 require_sudo_user
-require_command nvidia-smi   # provided by scripts/07_install_nvidia_driver.sh
+require_command nvidia-smi   # provided by scripts/06_install_nvidia_driver.sh
 
 TARGET_USER="$SUDO_USER"
 TARGET_HOME="$(sudo_user_home)"

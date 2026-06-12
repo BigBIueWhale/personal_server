@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/10_install_nvidia_container_toolkit.sh — wire Docker to the NVIDIA runtime.
+# scripts/09_install_nvidia_container_toolkit.sh — wire Docker to the NVIDIA runtime.
 #
 # After this script, `docker run --gpus all <image>` works: the container can
 # see the host's NVIDIA GPU(s) via the 'nvidia' Docker runtime.
 #
 # Prerequisites (script enforces):
-#   - NVIDIA driver loaded — installed by scripts/07_install_nvidia_driver.sh
-#   - Docker installed and running — installed by scripts/09_install_docker.sh
+#   - NVIDIA driver loaded — installed by scripts/06_install_nvidia_driver.sh
+#   - Docker installed and running — installed by scripts/08_install_docker.sh
 #
 # Sequence:
 #   (1a) Add NVIDIA's libnvidia-container GPG key under /usr/share/keyrings.
@@ -21,7 +21,7 @@
 #        the same driver/CUDA version as the host.
 #
 # Usage:
-#   sudo bash scripts/10_install_nvidia_container_toolkit.sh
+#   sudo bash scripts/09_install_nvidia_container_toolkit.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"

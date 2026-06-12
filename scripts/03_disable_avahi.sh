@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/04_disable_avahi.sh — fully disable avahi-daemon (mDNS / Bonjour / Zeroconf).
+# scripts/03_disable_avahi.sh — fully disable avahi-daemon (mDNS / Bonjour / Zeroconf).
 #
 # avahi-daemon advertises and discovers local-network services via multicast
 # UDP 5353. Use cases: AirPrint discovery, '.local' hostnames, SMB/AFP/NFS
@@ -17,7 +17,7 @@
 # lingering process that survived the race.
 #
 # Usage:
-#   sudo bash scripts/04_disable_avahi.sh
+#   sudo bash scripts/03_disable_avahi.sh
 #
 # Side effects:
 #   - Masks avahi-daemon.service and avahi-daemon.socket (creates symlinks

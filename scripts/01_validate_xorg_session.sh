@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/02_validate_xorg_session.sh — assert the current login session is Xorg, not Wayland.
+# scripts/01_validate_xorg_session.sh — assert the current login session is Xorg, not Wayland.
 #
 # This repo only supports Xorg sessions. See README §0 for the reasoning. This
 # script is a fast, dependency-free check you can (and should) run after every
@@ -7,7 +7,7 @@
 # environment.
 #
 # Usage:
-#   bash scripts/02_validate_xorg_session.sh
+#   bash scripts/01_validate_xorg_session.sh
 #
 # Side effects: none. The script reads $XDG_SESSION_TYPE and exits 0 if it is
 # "x11", non-zero otherwise. No files are modified.

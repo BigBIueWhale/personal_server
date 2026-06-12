@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/09_install_docker.sh — install Docker CE from Docker's official repository.
+# scripts/08_install_docker.sh — install Docker CE from Docker's official repository.
 #
 # Why docker-ce (and not docker.io from Ubuntu's universe):
 #   - The NVIDIA Container Toolkit (next script) is officially tested and
@@ -27,7 +27,7 @@
 # script enforces the no-TCP-socket part of that posture in step (h).
 #
 # Usage:
-#   sudo bash scripts/09_install_docker.sh
+#   sudo bash scripts/08_install_docker.sh
 #
 # After this script succeeds you must re-login (or run 'newgrp docker') for
 # your user's docker-group membership to take effect in your shell.

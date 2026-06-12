@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/05_configure_tmp_cleanup.sh — relax the systemd /tmp cleanup policy.
+# scripts/04_configure_tmp_cleanup.sh — relax the systemd /tmp cleanup policy.
 #
 # Default Ubuntu behavior, from /usr/lib/tmpfiles.d/tmp.conf:
 #   D /tmp 1777 root root 30d
@@ -20,7 +20,7 @@
 # tmpfiles-clean cycle (for the 90-day window).
 #
 # Usage:
-#   sudo bash scripts/05_configure_tmp_cleanup.sh
+#   sudo bash scripts/04_configure_tmp_cleanup.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
