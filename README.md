@@ -399,10 +399,12 @@ This is hardware, not software — no script. Buy one and plug it in.
 This box is reachable from the internet on its static IPv4 through the DMZ; its globally-routable IPv6 addresses would be a second, un-NAT'd front door that nothing here needs. Turn IPv6 off at the kernel before exposure:
 
 ```bash
-sudo bash scripts/12_disable_ipv6.sh
+sudo bash scripts/12_disable_ipv6.sh   # edits GRUB; prints "reboot required"
+sudo reboot                            # removes IPv6 at the kernel on this boot
+sudo bash scripts/12_disable_ipv6.sh   # re-run after reboot to validate
 ```
 
-Reference: [`scripts/12_disable_ipv6.sh`](./scripts/12_disable_ipv6.sh). Writes a sysctl drop-in (`net.ipv6.conf.{all,default}.disable_ipv6 = 1`), applies it, and asserts no globally-routable v6 address remains. sshd is already pinned IPv4-only in [§8](#8-openssh-server), so this disables no listening service. Idempotent.
+Reference: [`scripts/12_disable_ipv6.sh`](./scripts/12_disable_ipv6.sh). Adds the kernel boot parameter `ipv6.disable=1` to `GRUB_CMDLINE_LINUX`, regenerates and verifies `grub.cfg`, and removes any superseded `net.ipv6.conf.*.disable_ipv6` sysctl drop-in. A sysctl drop-in does **not** work here: `systemd-sysctl` runs before NetworkManager configures `eno1`, and NM resets the per-interface `disable_ipv6` back to `0` on every activation (SLAAC then re-adds the global addresses, even after a reboot — see [systemd #33762](https://github.com/systemd/systemd/issues/33762)); the kernel parameter stops the v6 stack from initializing at all. Being a boot parameter, it takes effect on the **next reboot**: the script configures and verifies it, then validates the live result when re-run after rebooting. sshd is already pinned IPv4-only in [§8](#8-openssh-server) — the script refuses to proceed if anything is still bound on `[::]:22` — so this disables no listening service. Idempotent.
 
 ---
 
