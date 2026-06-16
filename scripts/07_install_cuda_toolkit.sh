@@ -61,17 +61,23 @@ section "appending CUDA env to $BASHRC (idempotent)"
 
 # Use grep -qF (fixed-string) on the canonical substring, not the full line, so
 # manual edits with extra whitespace or formatting don't trigger duplication.
+#
+# Use the ${VAR:+:$VAR} form, not a bare ':$VAR': when the base variable is
+# empty/unset, a bare colon leaves an empty path element, which the dynamic
+# linker treats as the current working directory. That breaks tools that reject
+# it (e.g. Buildroot's host dependency check) and doubles the segment whenever
+# ~/.bashrc is re-sourced. The guarded form emits the colon only when non-empty.
 if grep -qF '/usr/local/cuda/bin' "$BASHRC"; then
     info "PATH already references /usr/local/cuda/bin — skipping"
 else
-    sudo -u "$TARGET_USER" bash -c "echo 'export PATH=/usr/local/cuda/bin:\$PATH' >> '$BASHRC'"
+    sudo -u "$TARGET_USER" bash -c "echo 'export PATH=/usr/local/cuda/bin\${PATH:+:\$PATH}' >> '$BASHRC'"
     info "appended PATH"
 fi
 
 if grep -qF '/usr/local/cuda/lib64' "$BASHRC"; then
     info "LD_LIBRARY_PATH already references /usr/local/cuda/lib64 — skipping"
 else
-    sudo -u "$TARGET_USER" bash -c "echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:\$LD_LIBRARY_PATH' >> '$BASHRC'"
+    sudo -u "$TARGET_USER" bash -c "echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}' >> '$BASHRC'"
     info "appended LD_LIBRARY_PATH"
 fi
 
