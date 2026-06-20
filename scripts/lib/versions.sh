@@ -34,14 +34,27 @@ CUDA_TOOLKIT_VERSION=13.0.3-1
 CUDA_KEYRING_URL=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
 
 # -- Docker CE and plugins -----------------------------------------------------
-# Engine + CLI on 29.5.3: 29.5.1 fixed the host-root `docker cp`/archive CVEs
-# (CVE-2026-41567/-41568/-42306), but shipped a `docker cp` regression fixed in
-# 29.5.2 — so pin the clean 29.5.3, not the bare minimum. containerd 2.2.4 fixes
-# CVE-2026-46680 and is what 29.5.3 bundles; pin it explicitly (the docker-ce
-# dependency allows but does not force it). buildx/compose tracked to current.
-DOCKER_CE_VERSION="5:29.5.3-1~ubuntu.24.04~noble"
-DOCKER_CE_CLI_VERSION="5:29.5.3-1~ubuntu.24.04~noble"
-CONTAINERD_IO_VERSION="2.2.4-1~ubuntu.24.04~noble"
+# Engine + CLI on 29.6.0 (latest noble/stable). 29.x security history that drove
+# earlier pins, all well below 29.6.0: 29.3.1 fixed the AuthZ-bypass/plugin/
+# BuildKit set (CVE-2026-34040/-33997/-33748/-33747), 29.5.1 fixed the host-root
+# `docker cp`/archive CVEs (CVE-2026-41567/-41568/-42306), 29.5.2 fixed a
+# `docker cp` regression. 29.6.0 ships no security fixes over 29.5.3 — taken only
+# to keep the engine current.
+#
+# containerd 2.2.5 (was 2.2.4). 2.2.4 fixed CVE-2026-46680; 2.2.5 adds fixes for
+# CVE-2026-50195/-53488/-53492/-53489 (CRI checkpoint/restore — NOT reachable on
+# a Docker-only host, no kubelet drives the CRI plugin) and CVE-2026-47262 (core
+# containerd: malicious-image unbounded-memory OOM DoS, which IS reachable via
+# `docker run`), and bumps bundled runc 1.3.5 -> 1.3.6 (closing the low-impact
+# CVE-2026-41579; the serious Nov-2025 escape trio was already fixed at 1.3.5).
+# Pin it explicitly — the docker-ce dependency allows but does not force it.
+#
+# buildx 0.34.1 / compose 5.1.4 are the latest versions Docker packages for
+# noble/stable (upstream buildx v0.35.0 is tagged but not yet in the apt repo,
+# and would fail the install's exact-version apt pin). No known CVE in either.
+DOCKER_CE_VERSION="5:29.6.0-1~ubuntu.24.04~noble"
+DOCKER_CE_CLI_VERSION="5:29.6.0-1~ubuntu.24.04~noble"
+CONTAINERD_IO_VERSION="2.2.5-1~ubuntu.24.04~noble"
 DOCKER_BUILDX_PLUGIN_VERSION="0.34.1-1~ubuntu.24.04~noble"
 DOCKER_COMPOSE_PLUGIN_VERSION="5.1.4-1~ubuntu.24.04~noble"
 
