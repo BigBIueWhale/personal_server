@@ -138,7 +138,9 @@ MANAGED_CONFIG = """# Managed by scripts/00_install_codex_cli.sh.
 # by hand; edit the installer, delete this exact file, then re-run.
 #
 # Automation policy:
-# - Pin model/reasoning to avoid alias/catalog/default drift.
+# - Pin model/reasoning to avoid alias/catalog/default drift. Default spawned
+#   sub-agents inherit this effective model/reasoning unless a non-default role
+#   or explicit spawn override intentionally replaces it.
 # - Match the user's preferred no-permission-prompt workflow with
 #   approval_policy="never" and sandbox_mode="danger-full-access".
 # - Keep web search live for agent-side research when Codex supports it.
