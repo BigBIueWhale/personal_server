@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/00_install_codex_cli_undo.sh — defensively undo the per-user Codex
+# scripts/00_install_codex_cli_undo.sh - defensively undo the per-user Codex
 # CLI configuration written by 00_install_codex_cli.sh.
 #
 # WHAT IT UNDOES
@@ -14,7 +14,7 @@
 #       sessions, logs, history, plugins, MCP config, themes, or any other Codex
 #       state under ~/.codex.
 #
-# DESIGN — TWO-PHASE, ALL-OR-NOTHING
+# DESIGN - TWO-PHASE, ALL-OR-NOTHING
 # ----------------------------------
 # Phase 1 verifies exact byte sequences and collects every problem before any
 # write. If there is a problem, the script exits non-zero and touches nothing.
@@ -34,7 +34,7 @@ require_command python3
 TARGET_USER="$(id -un)"
 TARGET_HOME="$HOME"
 [ "$TARGET_HOME" = "/home/$TARGET_USER" ] \
-    || die "expected HOME=/home/$TARGET_USER, got '$TARGET_HOME' — refusing to write into a non-standard home"
+    || die "expected HOME=/home/$TARGET_USER, got '$TARGET_HOME' - refusing to write into a non-standard home"
 
 if [ -n "${CODEX_HOME:-}" ] && [ "$CODEX_HOME" != "$TARGET_HOME/.codex" ]; then
     die "CODEX_HOME is set to '$CODEX_HOME'. This undo script manages the default $TARGET_HOME/.codex only; unset CODEX_HOME and re-run."
@@ -44,7 +44,7 @@ BASHRC="$TARGET_HOME/.bashrc"
 CODEX_HOME_DIR="$TARGET_HOME/.codex"
 CONFIG="$CODEX_HOME_DIR/config.toml"
 
-[ -f "$BASHRC" ] || die "$BASHRC does not exist — nothing to undo for PATH step"
+[ -f "$BASHRC" ] || die "$BASHRC does not exist - nothing to undo for PATH step"
 
 section "verify Codex managed state before undo"
 
@@ -119,7 +119,7 @@ enabled = false
 
 STEP_B_APPEND = (
     "\n"
-    "# Added by 00_install_codex_cli.sh — codex lives in ~/.local/bin\n"
+    "# Added by 00_install_codex_cli.sh - codex lives in ~/.local/bin\n"
     "export PATH=\"$HOME/.local/bin:$PATH\"\n"
 )
 
@@ -141,7 +141,7 @@ if n_b > 1:
     problems.append(f"{BASHRC}: Codex PATH snippet appears {n_b} times; expected 0 or 1")
 
 if problems:
-    print("[fatal] Phase 1 verification failed — refusing to undo anything.", file=sys.stderr)
+    print("[fatal] Phase 1 verification failed - refusing to undo anything.", file=sys.stderr)
     print("        No file has been touched. Problems:", file=sys.stderr)
     for p in problems:
         print(f"  - {p}", file=sys.stderr)
@@ -172,6 +172,6 @@ else:
 print("[info] Codex managed configuration undo complete")
 PYEOF
 
-section "success — Codex CLI configuration reverted"
+section "success - Codex CLI configuration reverted"
 info "Codex binary/package, auth, sessions, logs, history, plugins, MCP config,"
 info "and all unmanaged ~/.codex state were intentionally preserved."

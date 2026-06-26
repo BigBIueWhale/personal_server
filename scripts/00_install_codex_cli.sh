@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/00_install_codex_cli.sh — install OpenAI Codex CLI and configure
+# scripts/00_install_codex_cli.sh - install OpenAI Codex CLI and configure
 # automation-first defaults for this personal Debian/Ubuntu box.
 #
 # WHY THIS EXISTS
@@ -54,14 +54,14 @@ require_command python3
 TARGET_USER="$(id -un)"
 TARGET_HOME="$HOME"
 [ "$TARGET_HOME" = "/home/$TARGET_USER" ] \
-    || die "expected HOME=/home/$TARGET_USER, got '$TARGET_HOME' — refusing to write into a non-standard home"
+    || die "expected HOME=/home/$TARGET_USER, got '$TARGET_HOME' - refusing to write into a non-standard home"
 
 if [ -n "${CODEX_HOME:-}" ] && [ "$CODEX_HOME" != "$TARGET_HOME/.codex" ]; then
     die "CODEX_HOME is set to '$CODEX_HOME'. This installer manages the default $TARGET_HOME/.codex only; unset CODEX_HOME and re-run."
 fi
 
 BASHRC="$TARGET_HOME/.bashrc"
-[ -f "$BASHRC" ] || die "$BASHRC does not exist — this script edits .bashrc and cannot proceed"
+[ -f "$BASHRC" ] || die "$BASHRC does not exist - this script edits .bashrc and cannot proceed"
 
 LOCAL_BIN="$TARGET_HOME/.local/bin"
 CODEX_BIN="$LOCAL_BIN/codex"
@@ -83,13 +83,13 @@ if command -v codex >/dev/null 2>&1; then
 fi
 
 if [ -e "$CODEX_BIN" ]; then
-    [ -x "$CODEX_BIN" ] || die "$CODEX_BIN exists but is not executable — refusing to touch it"
-    info "$CODEX_BIN already exists — skipping installer (re-run is idempotent)"
+    [ -x "$CODEX_BIN" ] || die "$CODEX_BIN exists but is not executable - refusing to touch it"
+    info "$CODEX_BIN already exists - skipping installer (re-run is idempotent)"
 else
     info "downloading and running $INSTALLER_URL with CODEX_NON_INTERACTIVE=1"
     curl -fsSL "$INSTALLER_URL" | CODEX_NON_INTERACTIVE=1 sh
     [ -x "$CODEX_BIN" ] \
-        || die "after running installer, $CODEX_BIN does not exist or is not executable — installer must have failed"
+        || die "after running installer, $CODEX_BIN does not exist or is not executable - installer must have failed"
 fi
 
 VER_LINE="$("$CODEX_BIN" --version 2>&1 | head -1 || true)"
@@ -103,12 +103,12 @@ info "codex --version: $VER_LINE"
 section "(b) ~/.local/bin on PATH in $BASHRC"
 
 if grep -Eq '^[[:space:]]*export[[:space:]]+PATH=.*\.local/bin' "$BASHRC"; then
-    info "$BASHRC already has an 'export PATH=' line that references .local/bin — leaving alone"
+    info "$BASHRC already has an 'export PATH=' line that references .local/bin - leaving alone"
 else
     info "appending PATH export to $BASHRC (no existing reference to .local/bin found)"
     {
         printf '\n'
-        printf '# Added by 00_install_codex_cli.sh — codex lives in ~/.local/bin\n'
+        printf '# Added by 00_install_codex_cli.sh - codex lives in ~/.local/bin\n'
         printf 'export PATH="$HOME/.local/bin:$PATH"\n'
     } >> "$BASHRC"
 fi
@@ -220,7 +220,7 @@ if CONFIG.exists():
     if existing == MANAGED_CONFIG:
         print(f"[info] {CONFIG}: already present and matches expected bytes")
     elif existing.strip() == "":
-        print(f"[info] {CONFIG}: empty — writing managed direct config")
+        print(f"[info] {CONFIG}: empty - writing managed direct config")
         atomic_write(CONFIG, MANAGED_CONFIG)
     else:
         try:
@@ -238,7 +238,7 @@ else:
 print("[info] managed Codex config TOML validation passed")
 PYEOF
 
-section "success — Codex CLI installed and configured"
+section "success - Codex CLI installed and configured"
 info "Open a NEW shell (or run 'source ~/.bashrc') so PATH updates take effect."
 info "Run 'codex' and verify active state with /status."
 info "Managed default: approval_policy=never, sandbox_mode=danger-full-access."
