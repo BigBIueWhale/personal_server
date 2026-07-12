@@ -292,6 +292,27 @@ docker run -p 3000:8080 ...             # world-reachable — wrong on a DMZ box
 
 Membership in the `docker` group is **root-equivalent**. Anyone who can write to `/var/run/docker.sock` can mount the host root filesystem and become root. Treat the docker group as `sudo NOPASSWD`.
 
+### Public container services still expose the shared host kernel
+
+Publishing a container port does not by itself give a remote client code execution, and a normal container is not equivalent to a host process. The relevant risk chain is narrower and concrete:
+
+1. This repository deliberately makes the machine the router's DMZ target; [§19](#19-router-dmz-configuration) forwards all incoming connections to it.
+2. A container port published without an explicit loopback address is consequently reachable from the public internet, as explained immediately above.
+3. If the program listening on that port has an exploitable defect, a remote client may obtain code execution **inside the container**.
+4. Docker containers share the host's Linux kernel. An attacker with that container foothold can therefore attempt to combine it with a kernel vulnerability to cross the container boundary and obtain host authority.
+
+This chain has nothing inherently to do with automatic image updates. An automatic updater creates a separate software-supply risk, but it is not required: an ordinary, manually provisioned, internet-facing container with a remotely exploitable application is enough to supply the initial in-container execution.
+
+**Specific reference-machine example, verified 2026-07-12:** this server was running Ubuntu kernel `6.17.0-35-generic`. Canonical currently marks Ubuntu 24.04 Noble's `linux-hwe-6.17` as vulnerable to [CVE-2026-46242 (Bad Epoll)](https://ubuntu.com/security/CVE-2026-46242), an unprivileged Linux-kernel use-after-free. The original researcher's public exploit is target-specific to the tested kernelCTF `6.12.67` and Google COS builds, so it is **not** a ready-made executable for this exact Ubuntu kernel. Nevertheless, its published privilege-escalation payload installs the kernel's initial root credentials and [switches a process into the initial namespaces](https://github.com/J-jaeyoung/security-research/blob/submit-cve-2026-46242/pocs/linux/kernelctf/CVE-2026-46242_lts_cos/docs/exploit.md#privilege-escalation)—the relevant mechanism for escaping container isolation rather than merely becoming root inside the existing container.
+
+Default seccomp, AppArmor, dropped capabilities, and the absence of privileged mode remain important layers, but they are not substitutes for a patched host kernel. Before intentionally publishing a container service on this DMZ host:
+
+- apply available Ubuntu kernel security updates, reboot, and verify the **running** kernel with `uname -r`;
+- retain Docker's default seccomp and AppArmor confinement, run the application as a non-root user, drop every unnecessary capability, and use `no-new-privileges` where compatible;
+- do not mount `/var/run/docker.sock`, host devices, or broad host directories into the container;
+- treat every writable bind mount as data the compromised container can alter, and expose only the specific port that is intentionally public; and
+- recognize that application hardening and kernel patching address different links in the same chain: neither replaces the other.
+
 ---
 
 ## 12. NVIDIA Container Toolkit
