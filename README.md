@@ -305,6 +305,22 @@ This chain has nothing inherently to do with automatic image updates. An automat
 
 **Specific reference-machine example, verified 2026-07-12:** this server was running Ubuntu kernel `6.17.0-35-generic`. Canonical currently marks Ubuntu 24.04 Noble's `linux-hwe-6.17` as vulnerable to [CVE-2026-46242 (Bad Epoll)](https://ubuntu.com/security/CVE-2026-46242), an unprivileged Linux-kernel use-after-free. The original researcher's public exploit is target-specific to the tested kernelCTF `6.12.67` and Google COS builds, so it is **not** a ready-made executable for this exact Ubuntu kernel. Nevertheless, its published privilege-escalation payload installs the kernel's initial root credentials and [switches a process into the initial namespaces](https://github.com/J-jaeyoung/security-research/blob/submit-cve-2026-46242/pocs/linux/kernelctf/CVE-2026-46242_lts_cos/docs/exploit.md#privilege-escalation)—the relevant mechanism for escaping container isolation rather than merely becoming root inside the existing container.
 
+**Deployment decision for `haggai_computer` (2026-07-13): publish only its
+PAKE-authenticated RustDesk Direct-IP port.** Do not publish guest development
+servers on host ports `3000`, `5173`, or `8080`, and do not add even a
+loopback-only Docker mapping for T3 Code on `3773`. When a guest service is needed,
+the operator connects from the hardened **desktop** RustDesk client and chooses
+**Control Actions → TCP Tunneling**, mapping a viewer-local port to one explicit
+guest target such as `127.0.0.1:3000` or `127.0.0.1:3773`. The resulting listener
+exists only on the viewer's `127.0.0.1` and its bytes travel inside the already
+authenticated, encrypted RustDesk connection; no additional `0.0.0.0` listener is
+created on this DMZ host. This deliberately replaces the extra port-publication
+part of `haggai_computer` PR #2 while retaining its KDE/X11 and application work.
+It narrows the set of remotely reachable programs that could supply the first
+in-container foothold. It does **not** make the remaining public RustDesk service
+or the shared host kernel infallible, and it does not turn an ordinary container
+into a VM; kernel patching and the container controls below remain necessary.
+
 Default seccomp, AppArmor, dropped capabilities, and the absence of privileged mode remain important layers, but they are not substitutes for a patched host kernel. Before intentionally publishing a container service on this DMZ host:
 
 - apply available Ubuntu kernel security updates, reboot, and verify the **running** kernel with `uname -r`;
