@@ -49,7 +49,7 @@
 #
 # MODEL VERSION COUPLING
 # ----------------------
-# The install script's `model` value (and its derived "Opus X.Y" comment
+# The install script's `model` value (and its derived "Opus X[.Y]" comment
 # wording) change between model releases. The other four managed keys
 # (effortLevel=xhigh, showThinkingSummaries=true, env.CLAUDE_CODE_EFFORT_
 # LEVEL=max, env.CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000) and the rest of
@@ -57,8 +57,8 @@
 #
 # This script REQUIRES the model string as its single positional argument
 # — no default, no silent fallback. You must pass the exact ANTHROPIC_
-# MODEL value that's currently on disk, e.g. 'claude-opus-4-8[1m]' or
-# 'claude-opus-4-7[1m]'. If the on-disk state doesn't match the model
+# MODEL value that's currently on disk, e.g. 'claude-opus-5[1m]' (or an older
+# 'claude-opus-4-8[1m]'). If the on-disk state doesn't match the model
 # you pass, the script refuses. If you forget to pass it, or pass the
 # wrong number of args, or pass anything beginning with '-', the script
 # refuses with a usage message.
@@ -67,8 +67,8 @@
 #   bash scripts/00_install_claude_code_undo.sh MODEL
 #
 # Examples:
+#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-5[1m]'
 #   bash scripts/00_install_claude_code_undo.sh 'claude-opus-4-8[1m]'
-#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-4-7[1m]'
 #
 # After it succeeds, open a NEW shell (or `source ~/.bashrc`) so the
 # removed env vars are no longer set in subsequent processes, then re-run
@@ -87,8 +87,8 @@ USAGE='Usage: bash 00_install_claude_code_undo.sh MODEL
 
 Required positional argument:
   MODEL    The ANTHROPIC_MODEL value currently written on disk by
-           00_install_claude_code.sh, e.g. claude-opus-4-8[1m] or
-           claude-opus-4-7[1m]. No default — you must pass it explicitly
+           00_install_claude_code.sh, e.g. claude-opus-5[1m] or
+           claude-opus-4-8[1m]. No default — you must pass it explicitly
            so this script cannot accidentally undo a different version'\''s
            state.
 
@@ -131,13 +131,14 @@ CLAUDEMD="$CLAUDE_DIR/CLAUDE.md"
 # ---------------------------------------------------------------------------
 
 # MODEL came in from $1 (argv parsing already enforced "exactly one, no
-# flags, non-empty"). Derive the "Opus X.Y" human-readable version that
-# appears inside the marker block's first comment line. Strict format:
-# 'claude-opus-N-M' or 'claude-opus-N-M[anything]'. Anything else aborts.
+# flags, non-empty"). Derive the "Opus X" / "Opus X.Y" human-readable
+# version that appears inside the marker block's first comment line. Strict
+# format: 'claude-opus-N', 'claude-opus-N-M', or either with a '[anything]'
+# suffix. Anything else aborts.
 MODEL="$1"
-HR_VERSION="$(printf '%s' "$MODEL" | sed -nE 's/^claude-opus-([0-9]+)-([0-9]+)(\[.*\])?$/\1.\2/p')"
+HR_VERSION="$(printf '%s' "$MODEL" | sed -nE 's/^claude-opus-([0-9]+)(-[0-9]+)?(\[.*\])?$/\1\2/p' | tr '-' '.')"
 [ -n "$HR_VERSION" ] \
-    || die "could not derive human-readable Opus version from MODEL='$MODEL' (expected form: claude-opus-N-M or claude-opus-N-M[1m])"
+    || die "could not derive human-readable Opus version from MODEL='$MODEL' (expected form: claude-opus-N, claude-opus-N-M, or claude-opus-N-M[1m])"
 
 MARKER_BEGIN='# >>> claude code config (managed by 00_install_claude_code.sh) >>>'
 MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
@@ -433,4 +434,4 @@ section "success — Claude Code configuration reverted"
 info "Open a NEW shell (or 'source ~/.bashrc') so the removed env vars are no"
 info "longer inherited by subsequently launched processes. Then re-run"
 info "scripts/00_install_claude_code.sh to re-apply with the current install"
-info "script's values (currently ANTHROPIC_MODEL=claude-opus-4-8[1m])."
+info "script's values (currently ANTHROPIC_MODEL=claude-opus-5[1m])."
