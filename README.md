@@ -6,7 +6,7 @@ Every numbered section has a corresponding script under [`scripts/`](./scripts/)
 
 This guide is intentionally **Xorg-only**. Wayland is not supported. See [§0](#0-why-xorg-only).
 
-Every package and downloaded asset is **pinned to an exact version** in [`scripts/lib/versions.sh`](./scripts/lib/versions.sh). Same input → same output. To upgrade a component, edit one line there. See [§0a](#0a-version-pinning).
+Every package and downloaded asset is **pinned to an exact version** in [`scripts/lib/versions.sh`](./scripts/lib/versions.sh) — with one deliberate exception, the NVIDIA driver, which is branch-pinned because its kernel module is Canonical's prebuilt signed module and tracks the HWE kernel (see [§0a](#0a-version-pinning)). Same input → same output. To upgrade a component, edit one line there.
 
 ---
 
@@ -54,7 +54,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 
 | Component | Pin |
 |---|---|
-| NVIDIA driver branch + full version | `nvidia-driver-595-open = 595.71.05-0ubuntu0.24.04.1` |
+| NVIDIA driver (branch-pinned) | `nvidia-driver-595-open` (branch 595) + Canonical's prebuilt signed `linux-modules-nvidia-595-open-generic-hwe-24.04`; point release tracks the HWE kernel |
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
 | Docker CE + plugins | `docker-ce = 5:29.5.3-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.1-1` (and matching libs) |
@@ -63,7 +63,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 
 Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins.
 
-This means: a fresh install on the exact same Ubuntu 24.04 LTS lands at the exact same software stack as the reference machine. **No drift.**
+This means: a fresh install on the exact same Ubuntu 24.04 LTS lands at the exact same software stack as the reference machine — with the single deliberate exception of the NVIDIA driver point release, which tracks the HWE kernel (see below). **No accidental drift.**
 
 To upgrade a component:
 
@@ -72,7 +72,7 @@ To upgrade a component:
 3. Re-run [`network_security/verify_network_security.py`](./network_security/verify_network_security.py) to confirm posture is unchanged.
 4. Commit.
 
-The NVIDIA driver branch is overridable via the `DRIVER_BRANCH` env var (e.g., `sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh`). When overridden, the per-package version pins are intentionally skipped — opting into a different branch is opting out of pinning, with a warning logged.
+NVIDIA is the one stack pinned to a **branch** rather than a frozen point version. Its kernel module is Canonical's prebuilt, signed `linux-modules-nvidia-595-open-generic-hwe-24.04`, versioned to the HWE kernel ABI and rebuilt against the current 595 point release for each new kernel; the userspace `nvidia-driver` / `nvidia-utils` packages therefore track that same point release through `noble-updates`. Freezing them to an exact version would desync userspace from the kernel-coupled module and break `nvidia-smi` on the next kernel bump. The branch is overridable via the `DRIVER_BRANCH` env var (e.g., `sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh`).
 
 ---
 
@@ -117,11 +117,11 @@ Boot from the USB stick. In the live-image session before installation:
 1. **When prompted *"a newer installer is available — Update?"*, click yes.** The updater pulls a newer `ubuntu-desktop-installer` snap. This is fine; it does NOT change the default-display-server policy or the resulting software stack — that's decided post-install by the gdm3 udev rule from [§0](#0-why-xorg-only), regardless of installer version. (We confirmed this empirically during the reference setup.)
 2. Choose **"Erase disk and install Ubuntu"** for the install method (this guide assumes a single-purpose box, no dual-boot).
 3. Check **"Install third-party software for graphics and Wi-Fi hardware and additional media formats"**. This is critical — it pulls in:
-   - **The NVIDIA proprietary driver** out of `multiverse` (the `nvidia-driver-XXX-open` metapackage on the current branch — 595 at time of writing). Without this, the install lands on `nouveau` and `nvidia-smi` is unavailable until you run [§9](#9-nvidia-driver-and-dkms) by hand.
+   - **The NVIDIA proprietary driver** out of `multiverse` (the `nvidia-driver-XXX-open` metapackage on the current branch — 595 at time of writing). Without this, the install lands on `nouveau` and `nvidia-smi` is unavailable until you run [§9](#9-nvidia-driver-and-kernel-module) by hand.
    - **Wi-Fi and Bluetooth firmware blobs** that are not in `main`.
    - **Restricted media codecs** (MP3, AAC, H.264 userland) for desktop usability.
 
-   You'll still run [§9](#9-nvidia-driver-and-dkms) afterwards to add DKMS and pin the driver branch — the third-party checkbox installs the driver but does NOT install DKMS, which is what makes the kernel module survive kernel upgrades.
+   The third-party checkbox installs the driver **and** Canonical's prebuilt signed kernel module (`linux-modules-nvidia-595-open-generic-hwe-24.04`) — that signed module is what carries the driver across kernel upgrades, with no local rebuild or signing key. You'll still run [§9](#9-nvidia-driver-and-kernel-module) afterwards to assert the pinned branch and add the explicit `nvidia-utils` package.
 
 After install completes and the box reboots:
 
@@ -258,7 +258,7 @@ It also pins the listener to **IPv4 only** via a `ssh.socket` drop-in, because t
 
 ---
 
-## 9. NVIDIA driver and DKMS
+## 9. NVIDIA driver and kernel module
 
 ```bash
 sudo bash scripts/06_install_nvidia_driver.sh
@@ -269,10 +269,10 @@ sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh
 Reference: [`scripts/06_install_nvidia_driver.sh`](./scripts/06_install_nvidia_driver.sh). Installs three packages on the chosen branch (default 595):
 
 - `nvidia-driver-${BRANCH}-open` — the proprietary driver in its open-kernel-module variant.
-- `nvidia-dkms-${BRANCH}-open` — DKMS hookup so the kernel module rebuilds on every kernel upgrade. **The "Install third-party software" checkbox during Ubuntu install does NOT install this; it must be added explicitly.**
+- `linux-modules-nvidia-${BRANCH}-open-generic-hwe-24.04` — Canonical's prebuilt, signed kernel module, versioned to the HWE kernel ABI. Naming it explicitly makes apt satisfy the driver's module-provider dependency with this prebuilt module (and pulls the matching per-kernel `linux-modules-nvidia-${BRANCH}-open-<kver>` alongside every new HWE kernel, so the module survives kernel upgrades with no local rebuild or signing key). **The "Install third-party software" checkbox installs this too; §9 just asserts the pinned branch and adds the utils package.**
 - `nvidia-utils-${BRANCH}` — userspace utils including `nvidia-smi`.
 
-The script then runs `nvidia-smi` and confirms `dkms status` reports an `nvidia/...` entry. If `dkms status` prints `(WARNING! Diff between built and installed module!)` for one or more modules, that is harmless — it means DKMS built a module whose bytes differ from the in-tree-built module currently loaded; same version, different build artifact. DKMS's build will be loaded on the next reboot or kernel upgrade.
+The script then runs `nvidia-smi` and confirms the loaded `nvidia` module resolves (via `dpkg -S`) to a `linux-modules-nvidia-${BRANCH}-open-*` package — i.e. the prebuilt signed module is the active provider for the running kernel. No per-kernel compile or local module-signing is involved; the module you run is the one Canonical built and signed.
 
 ---
 
@@ -288,7 +288,7 @@ Reference: [`scripts/07_install_cuda_toolkit.sh`](./scripts/07_install_cuda_tool
 
 After it finishes, open a new shell (or `source ~/.bashrc`) so `nvcc` is on `PATH`.
 
-Pre-built CUDA workloads (binaries shipping their own CUDA runtime libs, containers built `FROM nvidia/cuda:...`) do not need this — only the driver from [§9](#9-nvidia-driver-and-dkms). Skip this section if your only host-side CUDA need is running, not compiling.
+Pre-built CUDA workloads (binaries shipping their own CUDA runtime libs, containers built `FROM nvidia/cuda:...`) do not need this — only the driver from [§9](#9-nvidia-driver-and-kernel-module). Skip this section if your only host-side CUDA need is running, not compiling.
 
 ---
 

@@ -17,11 +17,19 @@
 #   sha256sum ~/Downloads/teamviewer_amd64.deb
 
 # -- NVIDIA proprietary driver (open kernel module variant) --------------------
-# nvidia-driver-${BRANCH}-open metapackage and its DKMS + utils companions.
+# The kernel module is Canonical's prebuilt, signed
+# linux-modules-nvidia-${BRANCH}-open-generic-hwe-24.04 package. It is versioned
+# to the HWE kernel ABI (not the driver), built and signed by Canonical against
+# each new HWE kernel, and shipped through noble-updates — so it loads under
+# Secure Boot with no local signing key and follows the HWE kernel automatically
+# on every kernel upgrade. Because that signed module is rebuilt against the
+# current 595 point release for each kernel, the userspace nvidia-driver /
+# nvidia-utils packages must track the same point release. NVIDIA is therefore
+# pinned to a BRANCH, not a frozen point version: freezing userspace would
+# desync it from the kernel-coupled module and break nvidia-smi on the next
+# kernel bump. (This is the one stack that floats within its pin — everything
+# else in this file is an exact-version pin.)
 NVIDIA_DRIVER_BRANCH=595
-NVIDIA_DRIVER_VERSION=595.71.05-0ubuntu0.24.04.1
-NVIDIA_DKMS_VERSION=$NVIDIA_DRIVER_VERSION
-NVIDIA_UTILS_VERSION=$NVIDIA_DRIVER_VERSION
 
 # -- CUDA Toolkit (host) -------------------------------------------------------
 # Metapackage + full version. Pulls in nvcc, libraries, headers, samples.
