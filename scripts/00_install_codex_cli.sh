@@ -119,7 +119,19 @@ RELEASES_DIR = pathlib.Path(os.environ["C_RELEASES_DIR"])
 CODEX_CLI_VERSION = os.environ["C_CODEX_CLI_VERSION"]
 
 PINNED_RELEASE_DIR = f"{CODEX_CLI_VERSION}-x86_64-unknown-linux-musl"
-LEGACY_RELEASE_DIR = "0.142.2-x86_64-unknown-linux-musl"
+
+# Any release directory that is not the pinned one is prunable. The upstream
+# installer self-updates (and can be run by hand), so old releases accumulate;
+# hardcoding one legacy version meant the next self-update hard-refused. Entries
+# must still LOOK like a release directory - anything else is drift and refuses
+# rather than being deleted.
+RELEASE_DIR_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z_.-]+$")
+
+# Markers of a Codex installed outside this script's managed standalone tree.
+FOREIGN_CODEX_MARKERS = (
+    "/usr/local/lib/node_modules/@openai/codex",
+    "/usr/local/bin/codex",
+)
 
 # Exact host config hash and old cache catalog shape from the previous
 # installer-owned state. These are one-time migration inputs, not generic
@@ -307,33 +319,72 @@ def collect_slugs(value: object) -> set[str]:
     return slugs
 
 
+def self_and_ancestor_pids() -> set[int]:
+    """PIDs of this process and every ancestor.
+
+    This script is named 00_install_codex_cli.sh, so its own command line - and
+    that of the shell which launched it - contains the substring "codex".
+    Without this exclusion the guard reports itself and the install can never
+    get past preflight on any machine.
+    """
+    pids: set[int] = set()
+    pid = os.getpid()
+    while pid > 0 and pid not in pids:
+        pids.add(pid)
+        try:
+            stat = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+            # Fields after the final ')' are: state, ppid, ... The comm field
+            # can itself contain spaces and parens, so split after rindex(')').
+            pid = int(stat[stat.rindex(")") + 1:].split()[1])
+        except (OSError, ValueError, IndexError):
+            break
+    return pids
+
+
 def running_codex_process_problems() -> list[str]:
     problems: list[str] = []
     proc = pathlib.Path("/proc")
     if not proc.is_dir():
         return problems
 
+    skip = self_and_ancestor_pids()
+
     for entry in proc.iterdir():
         if not entry.name.isdigit():
             continue
-        pid = entry.name
+        pid = int(entry.name)
+        if pid in skip:
+            continue
         try:
             cmdline_raw = (entry / "cmdline").read_bytes()
         except (FileNotFoundError, PermissionError, ProcessLookupError):
             continue
-        cmdline = cmdline_raw.replace(b"\0", b" ").decode("utf-8", "replace").strip()
-        if "codex" not in cmdline and "@openai/codex" not in cmdline:
+        argv = [a for a in cmdline_raw.decode("utf-8", "replace").split("\0") if a]
+        if not argv:
             continue
         try:
             exe = os.readlink(entry / "exe")
         except (FileNotFoundError, PermissionError, ProcessLookupError):
             exe = ""
 
-        combined = f"{exe} {cmdline}"
-        if LEGACY_RELEASE_DIR in combined or "/usr/local/lib/node_modules/@openai/codex" in combined or "/usr/local/bin/codex" in combined:
-            problems.append(f"running stale Codex process pid={pid}: {combined}")
-        elif "codex" in combined and PINNED_RELEASE_DIR not in combined:
-            problems.append(f"running unmanaged Codex process pid={pid}: {combined}")
+        # Identify Codex by the binary actually being executed, not by any
+        # substring of the whole command line: a script path like
+        # 00_install_codex_cli.sh, an editor with that file open, or a ~/codex/
+        # working directory all contain "codex" without being Codex.
+        candidates = [exe] + argv
+        if not any(
+            os.path.basename(c) in ("codex", "codex.js") or "@openai/codex" in c
+            for c in candidates
+        ):
+            continue
+
+        combined = " ".join(candidates)
+        if PINNED_RELEASE_DIR in combined:
+            continue  # a process from the pinned release is the managed one
+        if any(marker in combined for marker in FOREIGN_CODEX_MARKERS):
+            problems.append(f"running Codex from an unmanaged system install pid={pid}: {combined}")
+        else:
+            problems.append(f"running non-pinned Codex process pid={pid}: {combined}")
 
     return problems
 
@@ -389,7 +440,7 @@ def config_state(problems: list[str]) -> str:
     return "bad"
 
 
-def validate_common(allow_missing_binary: bool, allow_legacy_release: bool) -> dict[str, str]:
+def validate_common(allow_missing_binary: bool) -> dict[str, str]:
     problems: list[str] = []
 
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", CODEX_CLI_VERSION):
@@ -422,21 +473,20 @@ def validate_common(allow_missing_binary: bool, allow_legacy_release: bool) -> d
     elif not allow_missing_binary:
         problems.append(f"{CODEX_BIN}: missing after installer")
 
-    allowed_releases = {PINNED_RELEASE_DIR}
-    if allow_legacy_release:
-        allowed_releases.add(LEGACY_RELEASE_DIR)
+    # Non-pinned releases are tolerated here and pruned in commit(); the final
+    # verification below enforces that exactly the pinned release survives.
     for name in release_dir_names():
-        if name not in allowed_releases:
-            problems.append(f"{RELEASES_DIR}: unexpected release entry {name!r}")
+        if not RELEASE_DIR_RE.fullmatch(name):
+            problems.append(f"{RELEASES_DIR}: unexpected entry {name!r} (not a release directory)")
 
     if path_exists(STANDALONE_CURRENT):
         if not STANDALONE_CURRENT.is_symlink():
             problems.append(f"{STANDALONE_CURRENT}: expected symlink")
         else:
             current_target = pathlib.Path(os.readlink(STANDALONE_CURRENT)).name
-            if current_target not in allowed_releases:
+            if not RELEASE_DIR_RE.fullmatch(current_target):
                 problems.append(
-                    f"{STANDALONE_CURRENT}: points at {current_target!r}, expected one of {sorted(allowed_releases)!r}"
+                    f"{STANDALONE_CURRENT}: points at {current_target!r}, which is not a release directory"
                 )
     elif not allow_missing_binary:
         problems.append(f"{STANDALONE_CURRENT}: missing after installer")
@@ -455,7 +505,7 @@ def validate_common(allow_missing_binary: bool, allow_legacy_release: bool) -> d
 
 
 def commit() -> None:
-    state = validate_common(allow_missing_binary=False, allow_legacy_release=True)
+    state = validate_common(allow_missing_binary=False)
 
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     if state["config"] == "new-managed":
@@ -479,10 +529,10 @@ def commit() -> None:
         for child in RELEASES_DIR.iterdir():
             if child.name == PINNED_RELEASE_DIR:
                 continue
-            if child.name != LEGACY_RELEASE_DIR:
-                die(f"{RELEASES_DIR}: unexpected release entry appeared during install: {child.name!r}")
+            if not RELEASE_DIR_RE.fullmatch(child.name):
+                die(f"{RELEASES_DIR}: unexpected entry appeared during install: {child.name!r}")
             shutil.rmtree(child)
-            print(f"[info] {child}: pruned old standalone release")
+            print(f"[info] {child}: pruned non-pinned standalone release")
 
     final_problems: list[str] = []
     if config_state(final_problems) != "new-managed":
@@ -508,7 +558,7 @@ def commit() -> None:
 
 
 if PHASE == "preflight":
-    state = validate_common(allow_missing_binary=True, allow_legacy_release=True)
+    state = validate_common(allow_missing_binary=True)
     print(f"[info] preflight config state: {state['config']}")
     print(f"[info] preflight model cache state: {state['cache']}")
 elif PHASE == "commit":

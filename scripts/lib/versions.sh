@@ -105,4 +105,4 @@ TEAMVIEWER_DEB_SHA256=c2b98b22bf2a34bbdf5b930c8fa7da17fba195d83d0e3f9e0e695c9043
 # -- OpenAI Codex CLI ----------------------------------------------------------
 # Standalone release installed by scripts/00_install_codex_cli.sh via
 # https://chatgpt.com/codex/install.sh --release "$CODEX_CLI_VERSION".
-CODEX_CLI_VERSION=0.144.1
+CODEX_CLI_VERSION=0.145.0
