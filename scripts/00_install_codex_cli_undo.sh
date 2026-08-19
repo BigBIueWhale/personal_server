@@ -63,7 +63,7 @@ CONFIG = pathlib.Path(os.environ["U_CONFIG"])
 
 MANAGED_CONFIG = """# Managed by scripts/00_install_codex_cli.sh.
 # This file is intentionally direct root Codex config, not a profile. Do not edit
-# by hand; edit the installer, delete this exact file, then re-run.
+# by hand; edit the installer, then re-run.
 #
 # Automation policy:
 # - Pin model/reasoning to avoid alias/catalog/default drift. Default spawned
@@ -77,7 +77,7 @@ MANAGED_CONFIG = """# Managed by scripts/00_install_codex_cli.sh.
 # - Disable prompt history persistence, analytics, feedback, and startup update
 #   checks on this personal infrastructure workstation.
 
-model = "gpt-5.5"
+model = "gpt-5.6-sol"
 model_provider = "openai"
 model_reasoning_effort = "xhigh"
 plan_mode_reasoning_effort = "xhigh"

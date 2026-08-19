@@ -93,3 +93,8 @@ TEAMVIEWER_DEB_SHA256=c2b98b22bf2a34bbdf5b930c8fa7da17fba195d83d0e3f9e0e695c9043
 #   # Rust stable as of 2026-04: 1.87.0 (rustup-init reports the channel)
 #   # uv as of 2026-04: 0.6.x
 #   # VS Code as of 2026-04: 1.99.x
+
+# -- OpenAI Codex CLI ----------------------------------------------------------
+# Standalone release installed by scripts/00_install_codex_cli.sh via
+# https://chatgpt.com/codex/install.sh --release "$CODEX_CLI_VERSION".
+CODEX_CLI_VERSION=0.144.1
