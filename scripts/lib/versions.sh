@@ -105,4 +105,15 @@ TEAMVIEWER_DEB_SHA256=c2b98b22bf2a34bbdf5b930c8fa7da17fba195d83d0e3f9e0e695c9043
 # -- OpenAI Codex CLI ----------------------------------------------------------
 # Standalone release installed by scripts/00_install_codex_cli.sh via
 # https://chatgpt.com/codex/install.sh --release "$CODEX_CLI_VERSION".
+# (--release is a documented flag of that installer; it also honours
+# CODEX_NON_INTERACTIVE=1.)
+#
+# 0.145.0 is the release actually running on the reference box, so it is what
+# this repo pins. Upstream ships newer (0.148.0 as of 2026-08-19) - do NOT bump
+# this line without installing and exercising that release first; the pin is
+# meant to record a verified version, not the newest one.
+#
+# Codex self-updates in place, so the release tree drifts past this pin on a
+# live box. 00_install_codex_cli.sh prunes any non-pinned release directory back
+# to this version rather than refusing, so re-running it re-asserts the pin.
 CODEX_CLI_VERSION=0.145.0

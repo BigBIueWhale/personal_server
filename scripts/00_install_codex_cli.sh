@@ -118,7 +118,30 @@ STANDALONE_CURRENT = pathlib.Path(os.environ["C_STANDALONE_CURRENT"])
 RELEASES_DIR = pathlib.Path(os.environ["C_RELEASES_DIR"])
 CODEX_CLI_VERSION = os.environ["C_CODEX_CLI_VERSION"]
 
-PINNED_RELEASE_DIR = f"{CODEX_CLI_VERSION}-x86_64-unknown-linux-musl"
+# Upstream names each release directory "<version>-<vendor_target>"
+# (install.sh: release_name="$resolved_version-$vendor_target"). Its Linux
+# vendor targets are x86_64-unknown-linux-musl and aarch64-unknown-linux-musl,
+# selected from uname -m. Derive the same value rather than hardcoding x86_64,
+# which silently mismatched on any non-x86_64 host.
+_ARCH = {
+    "x86_64": "x86_64",
+    "amd64": "x86_64",
+    "arm64": "aarch64",
+    "aarch64": "aarch64",
+}.get(os.uname().machine)
+if _ARCH is None:
+    print(
+        f"[fatal] unsupported architecture {os.uname().machine!r}; upstream install.sh "
+        "supports x86_64 and aarch64 only",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+VENDOR_TARGET = f"{_ARCH}-unknown-linux-musl"
+PINNED_RELEASE_DIR = f"{CODEX_CLI_VERSION}-{VENDOR_TARGET}"
+
+# Executable names upstream places in ~/.local/bin: install.sh links
+# codex-code-mode-host alongside codex when the release ships it.
+CODEX_BINARY_NAMES = ("codex", "codex.js", "codex-code-mode-host")
 
 # Any release directory that is not the pinned one is prunable. The upstream
 # installer self-updates (and can be run by hand), so old releases accumulate;
@@ -373,7 +396,7 @@ def running_codex_process_problems() -> list[str]:
         # working directory all contain "codex" without being Codex.
         candidates = [exe] + argv
         if not any(
-            os.path.basename(c) in ("codex", "codex.js") or "@openai/codex" in c
+            os.path.basename(c) in CODEX_BINARY_NAMES or "@openai/codex" in c
             for c in candidates
         ):
             continue
@@ -585,6 +608,14 @@ codex_state_guard preflight
 
 section "(b) install Codex CLI $CODEX_CLI_VERSION via $INSTALLER_URL"
 
+# The PATH="$LOCAL_BIN:$PATH" prefix is load-bearing, not cosmetic. Upstream
+# add_to_path() returns early when $BIN_DIR is already on PATH; otherwise it
+# appends its own "# >>> Codex installer >>>" block to a shell profile - which
+# the commit-phase validator below then refuses as unmanaged drift. Putting
+# ~/.local/bin on PATH for the installer keeps it from writing that block.
+# (Upstream still writes it if it detects a brew/npm-managed codex; that is a
+# genuine conflict and refusing is correct.)
+# CODEX_NON_INTERACTIVE=1 is honoured: install.sh accepts 1, true, or yes.
 info "running upstream installer for exact release $CODEX_CLI_VERSION"
 curl -fsSL "$INSTALLER_URL" \
     | PATH="$LOCAL_BIN:$PATH" CODEX_NON_INTERACTIVE=1 sh -s -- --release "$CODEX_CLI_VERSION"
