@@ -56,7 +56,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 |---|---|
 | NVIDIA driver (branch-pinned) | `nvidia-driver-595-open` (branch 595) + Canonical's prebuilt signed `linux-modules-nvidia-595-open-generic-hwe-24.04`; point release tracks the HWE kernel |
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
-| Docker CE + plugins | `docker-ce = 5:29.5.3-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
+| Docker CE + plugins | `docker-ce = 5:29.6.0-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.1-1` (and matching libs) |
 | TeamViewer | `15.78.3` (version-specific dl.teamviewer.com URL + SHA-256) |
 | OpenAI Codex CLI | `0.144.1` standalone release; default model `gpt-5.6-sol` |
