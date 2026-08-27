@@ -24,6 +24,9 @@
 #   (c) Accept only explicit known config/cache/release-tree states, migrate
 #       those to the exact gpt-5.6-sol state, prune old Codex release/cache
 #       leftovers, then verify the final state. Any other state refuses.
+#       "Exact" means the managed block is byte-exact; the tables Codex itself
+#       appends while running ([projects.*] trust levels, [tui.*], [notice],
+#       [mcp_servers.*]) are recognised and preserved verbatim, never rewritten.
 #   (d) Refuse while stale Codex processes from an old standalone or npm install
 #       are still running, because they can recreate old model-cache state.
 #
@@ -156,17 +159,9 @@ FOREIGN_CODEX_MARKERS = (
     "/usr/local/bin/codex",
 )
 
-# Exact host config hash and old cache catalog shape from the previous
-# installer-owned state. These are one-time migration inputs, not generic
-# fallbacks.
+# Exact host config hash from the previous installer-owned state. A one-time
+# migration input, not a generic fallback.
 OLD_LOCAL_CONFIG_SHA256 = "9846f898be46d8bdaeb33b4012cd6f54a53a0aafd939befcc7121384d5d4aa19"
-OLD_MODELS_CACHE_SLUGS = {
-    "gpt-5.5",
-    "gpt-5.4",
-    "gpt-5.4-mini",
-    "gpt-5.3-codex-spark",
-    "codex-auto-review",
-}
 
 PATH_BLOCK = (
     "\n"
@@ -328,20 +323,6 @@ def release_dir_names() -> list[str]:
     return sorted(p.name for p in RELEASES_DIR.iterdir())
 
 
-def collect_slugs(value: object) -> set[str]:
-    slugs: set[str] = set()
-    if isinstance(value, dict):
-        slug = value.get("slug")
-        if isinstance(slug, str):
-            slugs.add(slug)
-        for child in value.values():
-            slugs.update(collect_slugs(child))
-    elif isinstance(value, list):
-        for child in value:
-            slugs.update(collect_slugs(child))
-    return slugs
-
-
 def self_and_ancestor_pids() -> set[int]:
     """PIDs of this process and every ancestor.
 
@@ -423,22 +404,49 @@ def model_cache_state(problems: list[str]) -> str:
     except json.JSONDecodeError as e:
         problems.append(f"{MODEL_CACHE}: invalid JSON: {e}")
         return "bad"
-    slugs = collect_slugs(data)
-    if (
-        isinstance(data, dict)
-        and set(data) == {"client_version", "etag", "fetched_at", "models"}
-        and data.get("client_version") == "0.142.2"
-        and isinstance(data.get("models"), list)
-        and len(data["models"]) == 5
-        and slugs == OLD_MODELS_CACHE_SLUGS
-    ):
-        return "old-known-stale"
-    if "gpt-5.5" in slugs:
-        problems.append(
-            f"{MODEL_CACHE}: contains stale gpt-5.5 but does not match the known old 0.142.2 cache shape"
-        )
+    # Staleness is a property of the CLIENT that wrote the cache, not of any
+    # model name in it. The previous rule hardcoded one 0.142.2 catalog shape
+    # and additionally condemned any cache mentioning gpt-5.5 - written when
+    # gpt-5.5 was the OUTGOING default. Both have rotted: gpt-5.5 is a listed
+    # model in the live catalog again, so a freshly fetched, entirely correct
+    # cache refused the install; and the hardcoded shape would need a new magic
+    # constant at every pin bump. Keying on client_version is exact, needs no
+    # maintenance, and still catches the old 0.142.2 artifact.
+    if not isinstance(data, dict) or not isinstance(data.get("client_version"), str):
+        problems.append(f"{MODEL_CACHE}: not a Codex model cache (no client_version string)")
         return "bad"
-    return "current-or-non-stale"
+    if data["client_version"] != CODEX_CLI_VERSION:
+        return "stale-other-version"
+    return "current"
+
+
+# Tables Codex itself appends to the managed config while it runs. These are
+# the CLI's own state, not hand edits: it writes [projects.*] when a directory
+# is trusted, [tui.*] for one-shot UI counters, [notice] for dismissed nudges,
+# and [mcp_servers.*] for a server added with `codex mcp add`. Refusing them
+# made this installer un-runnable on any box that had actually been used, and
+# commit() would have silently deleted them (11 trust entries and an MCP server
+# on the reference box). They are now preserved verbatim across a re-run.
+# Anything outside this set is still drift and still refuses.
+RUNTIME_TAIL_TABLES = ("projects", "tui", "mcp_servers", "notice")
+
+
+def split_runtime_tail(text: str, head: str) -> str | None:
+    """Return the Codex-owned tail if `text` is exactly `head` plus appended
+    runtime tables, else None. The tail is parsed as a standalone TOML document
+    so a bare `key = value` cannot smuggle a key into the managed block."""
+    if not text.startswith(head):
+        return None
+    tail = text[len(head):]
+    if not tail.strip():
+        return ""
+    try:
+        parsed = tomllib.loads(tail)
+    except tomllib.TOMLDecodeError:
+        return None
+    if not parsed or any(table not in RUNTIME_TAIL_TABLES for table in parsed):
+        return None
+    return tail
 
 
 def config_state(problems: list[str]) -> str:
@@ -454,12 +462,19 @@ def config_state(problems: list[str]) -> str:
         return "old-managed"
     if file_sha256(CONFIG) == OLD_LOCAL_CONFIG_SHA256:
         return "old-local-runtime-state"
+    # Parse the whole document once, before the tail checks: a tail that
+    # re-opens a managed table parses fine on its own but makes the full file
+    # invalid TOML, and Codex would then fail to load it.
     try:
         tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         problems.append(f"{CONFIG}: unexpected content and invalid TOML: {e}")
-    else:
-        problems.append(f"{CONFIG}: unexpected TOML content; refusing to merge or overwrite")
+        return "bad"
+    if split_runtime_tail(text, NEW_MANAGED_CONFIG):
+        return "new-managed+runtime"
+    if split_runtime_tail(text, OLD_MANAGED_CONFIG):
+        return "old-managed+runtime"
+    problems.append(f"{CONFIG}: unexpected TOML content; refusing to merge or overwrite")
     return "bad"
 
 
@@ -533,13 +548,28 @@ def commit() -> None:
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     if state["config"] == "new-managed":
         print(f"[info] {CONFIG}: already exact managed gpt-5.6-sol config")
+    elif state["config"] == "new-managed+runtime":
+        print(
+            f"[info] {CONFIG}: exact managed gpt-5.6-sol config plus Codex's own "
+            "runtime tables; leaving both intact"
+        )
     else:
+        # Only the one validated state is allowed to contribute a tail, and it
+        # must still be there on re-read. No "tail = whatever we could salvage"
+        # fallback: a disagreement between validation and this read means the
+        # file changed under us, which is a refusal, not something to paper over.
+        tail = ""
+        if state["config"] == "old-managed+runtime":
+            tail = split_runtime_tail(CONFIG.read_text(encoding="utf-8"), OLD_MANAGED_CONFIG)
+            if not tail:
+                die(f"{CONFIG}: changed between validation and write; re-run the installer")
+            print(f"[info] {CONFIG}: carrying Codex's runtime tables across the migration")
         print(f"[info] {CONFIG}: replacing {state['config']} with exact managed gpt-5.6-sol config")
-        atomic_write(CONFIG, NEW_MANAGED_CONFIG)
+        atomic_write(CONFIG, NEW_MANAGED_CONFIG + tail)
 
-    if state["cache"] == "old-known-stale":
+    if state["cache"] == "stale-other-version":
         MODEL_CACHE.unlink()
-        print(f"[info] {MODEL_CACHE}: deleted exact old gpt-5.5 model cache")
+        print(f"[info] {MODEL_CACHE}: deleted model cache written by a different Codex client")
 
     if state["path_block_count"] == "0":
         text = BASHRC.read_text(encoding="utf-8")
@@ -558,13 +588,13 @@ def commit() -> None:
             print(f"[info] {child}: pruned non-pinned standalone release")
 
     final_problems: list[str] = []
-    if config_state(final_problems) != "new-managed":
+    if config_state(final_problems) not in ("new-managed", "new-managed+runtime"):
         final_problems.append(f"{CONFIG}: final config is not exact managed gpt-5.6-sol config")
     if BASHRC.read_text(encoding="utf-8").count(PATH_BLOCK) != 1:
         final_problems.append(f"{BASHRC}: final exact Codex PATH block count is not 1")
     final_cache = model_cache_state(final_problems)
-    if final_cache == "old-known-stale":
-        final_problems.append(f"{MODEL_CACHE}: final old model cache still exists")
+    if final_cache == "stale-other-version":
+        final_problems.append(f"{MODEL_CACHE}: final model cache is still from another Codex client")
     if sorted(release_dir_names()) != [PINNED_RELEASE_DIR]:
         final_problems.append(f"{RELEASES_DIR}: final release set is {release_dir_names()!r}, expected {[PINNED_RELEASE_DIR]!r}")
     if not path_exists(STANDALONE_CURRENT) or not STANDALONE_CURRENT.is_symlink():
