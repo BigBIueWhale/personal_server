@@ -56,12 +56,12 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 |---|---|
 | NVIDIA driver (branch-pinned) | `nvidia-driver-595-open` (branch 595) + Canonical's prebuilt signed `linux-modules-nvidia-595-open-generic-hwe-24.04`; point release tracks the HWE kernel |
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
-| Docker CE + plugins | `docker-ce = 5:29.6.0-1~ubuntu.24.04~noble` (and matching cli/containerd/buildx/compose) |
+| Docker CE + plugins | Engine/CLI `29.7.2`; containerd `2.3.4`; Buildx `0.36.1`; Compose `5.5.0` (exact Docker noble package revisions in `versions.sh`) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.1-1` (and matching libs) |
 | TeamViewer | `15.78.3` (version-specific dl.teamviewer.com URL + SHA-256) |
 | OpenAI Codex CLI | `0.150.1` standalone release; default model `gpt-5.6-sol` |
 
-Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins.
+Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins. The Docker installer refuses an installed component newer than its tested pin with an explicit stale-pin error; it never silently downgrades a newer host to make the file agree with reality.
 
 This means: a fresh install on the exact same Ubuntu 24.04 LTS lands at the exact same software stack as the reference machine — with the single deliberate exception of the NVIDIA driver point release, which tracks the HWE kernel (see below). **No accidental drift.**
 
@@ -326,7 +326,9 @@ Publishing a container port does not by itself give a remote client code executi
 
 This chain has nothing inherently to do with automatic image updates. An automatic updater creates a separate software-supply risk, but it is not required: an ordinary, manually provisioned, internet-facing container with a remotely exploitable application is enough to supply the initial in-container execution.
 
-**Specific reference-machine example, verified 2026-07-12:** this server was running Ubuntu kernel `6.17.0-35-generic`. Canonical currently marks Ubuntu 24.04 Noble's `linux-hwe-6.17` as vulnerable to [CVE-2026-46242 (Bad Epoll)](https://ubuntu.com/security/CVE-2026-46242), an unprivileged Linux-kernel use-after-free. The original researcher's public exploit is target-specific to the tested kernelCTF `6.12.67` and Google COS builds, so it is **not** a ready-made executable for this exact Ubuntu kernel. Nevertheless, its published privilege-escalation payload installs the kernel's initial root credentials and [switches a process into the initial namespaces](https://github.com/J-jaeyoung/security-research/blob/submit-cve-2026-46242/pocs/linux/kernelctf/CVE-2026-46242_lts_cos/docs/exploit.md#privilege-escalation)—the relevant mechanism for escaping container isolation rather than merely becoming root inside the existing container.
+**Bad Epoll is a mandatory host-kernel gate.** [CVE-2026-46242](https://ubuntu.com/security/CVE-2026-46242) is an unprivileged Linux-kernel use-after-free. The initially proposed upstream patch was incomplete; the corrected upstream fix landed on 2026-04-24. Canonical backported that corrected fix to Ubuntu 24.04 rather than requiring an upstream 7.1 kernel. The fixed generic-kernel package floors are `6.8.0-137.137` for the GA 6.8 track, `6.17.0-42.42` for HWE 6.17, and `7.0.0-28.28~24.04.1` for HWE 7.0. The reference server currently runs `7.0.0-30-generic` from package `7.0.0-30.30~24.04.1`, which is above its fixed floor. [`scripts/08_install_docker.sh`](./scripts/08_install_docker.sh) checks the package version belonging to the **running** kernel and refuses Docker installation on a vulnerable or unsupported kernel, including the case where a fixed kernel is installed but still awaits a reboot.
+
+The original researcher's [public exploit and analysis](https://github.com/J-jaeyoung/bad-epoll) target the tested kernelCTF `6.12.67` and Google COS builds rather than an exact Ubuntu ABI. Nevertheless, the published privilege-escalation payload installs the kernel's initial root credentials and [switches a process into the initial namespaces](https://github.com/J-jaeyoung/security-research/blob/submit-cve-2026-46242/pocs/linux/kernelctf/CVE-2026-46242_lts_cos/docs/exploit.md#privilege-escalation)—the relevant mechanism for escaping container isolation rather than merely becoming root inside the existing container. Docker's default seccomp profile permits the epoll syscall family, so container hardening is not a substitute for the patched host kernel.
 
 **Deployment decision for `haggai_computer` (2026-07-13): publish only its
 PAKE-authenticated RustDesk Direct-IP port.** Do not publish guest development
