@@ -27,8 +27,10 @@
 #       "Exact" means the managed block is byte-exact; the tables Codex itself
 #       appends while running ([projects.*] trust levels, [tui.*], [notice],
 #       [mcp_servers.*]) are recognised and preserved verbatim, never rewritten.
-#   (d) Refuse while stale Codex processes from an old standalone or npm install
-#       are still running, because they can recreate old model-cache state.
+#   (d) Refuse while stale host Codex processes from an old standalone or npm
+#       install are still running, because they can recreate old model-cache
+#       state. Processes in descendant/container PID namespaces are ignored
+#       before command-line reconnaissance; this script never signals processes.
 #
 # IDEMPOTENCY
 # -----------
@@ -98,6 +100,7 @@ codex_state_guard() {
     export C_STANDALONE_CURRENT="$STANDALONE_CURRENT"
     export C_RELEASES_DIR="$RELEASES_DIR"
     export C_CODEX_CLI_VERSION="$CODEX_CLI_VERSION"
+    export C_SCRIPT_DIR="$SCRIPT_DIR"
     python3 - <<'PYEOF'
 from __future__ import annotations
 
@@ -110,6 +113,11 @@ import shutil
 import sys
 import tempfile
 import tomllib
+
+SCRIPT_DIR = pathlib.Path(os.environ["C_SCRIPT_DIR"])
+sys.path.insert(0, str(SCRIPT_DIR))
+
+from lib.host_processes import HostProcessScopeError, host_process_dirs
 
 PHASE = os.environ["C_PHASE"]
 BASHRC = pathlib.Path(os.environ["C_BASHRC"])
@@ -323,7 +331,7 @@ def release_dir_names() -> list[str]:
     return sorted(p.name for p in RELEASES_DIR.iterdir())
 
 
-def self_and_ancestor_pids() -> set[int]:
+def self_and_ancestor_pids(proc: pathlib.Path) -> set[int]:
     """PIDs of this process and every ancestor.
 
     This script is named 00_install_codex_cli.sh, so its own command line - and
@@ -336,7 +344,7 @@ def self_and_ancestor_pids() -> set[int]:
     while pid > 0 and pid not in pids:
         pids.add(pid)
         try:
-            stat = pathlib.Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+            stat = (proc / str(pid) / "stat").read_text(encoding="utf-8", errors="replace")
             # Fields after the final ')' are: state, ppid, ... The comm field
             # can itself contain spaces and parens, so split after rindex(')').
             pid = int(stat[stat.rindex(")") + 1:].split()[1])
@@ -348,14 +356,17 @@ def self_and_ancestor_pids() -> set[int]:
 def running_codex_process_problems() -> list[str]:
     problems: list[str] = []
     proc = pathlib.Path("/proc")
-    if not proc.is_dir():
-        return problems
+    try:
+        entries = host_process_dirs(proc)
+    except HostProcessScopeError as error:
+        return [f"cannot scope Codex process scan to the host: {error}"]
 
-    skip = self_and_ancestor_pids()
+    skip = self_and_ancestor_pids(proc)
 
-    for entry in proc.iterdir():
-        if not entry.name.isdigit():
-            continue
+    # host_process_dirs() performs the PID-namespace check before this loop, so
+    # no command line or executable from a container is used for reconnaissance
+    # or can become a target of any future process cleanup added here.
+    for entry in entries:
         pid = int(entry.name)
         if pid in skip:
             continue
@@ -386,9 +397,9 @@ def running_codex_process_problems() -> list[str]:
         if PINNED_RELEASE_DIR in combined:
             continue  # a process from the pinned release is the managed one
         if any(marker in combined for marker in FOREIGN_CODEX_MARKERS):
-            problems.append(f"running Codex from an unmanaged system install pid={pid}: {combined}")
+            problems.append(f"running host Codex from an unmanaged system install pid={pid}: {combined}")
         else:
-            problems.append(f"running non-pinned Codex process pid={pid}: {combined}")
+            problems.append(f"running non-pinned host Codex process pid={pid}: {combined}")
 
     return problems
 
@@ -579,6 +590,8 @@ def commit() -> None:
         print(f"[info] {BASHRC}: exact Codex PATH block already present")
 
     if path_exists(RELEASES_DIR):
+        # This is filesystem cleanup, not process cleanup: every candidate is an
+        # exact child of the host's managed standalone release directory.
         for child in RELEASES_DIR.iterdir():
             if child.name == PINNED_RELEASE_DIR:
                 continue
