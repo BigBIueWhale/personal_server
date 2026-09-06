@@ -101,19 +101,11 @@ TEAMVIEWER_DEB_SHA256=c2b98b22bf2a34bbdf5b930c8fa7da17fba195d83d0e3f9e0e695c9043
 # (--release is a documented flag of that installer; it also honours
 # CODEX_NON_INTERACTIVE=1.)
 #
-# 0.150.1 is the release actually running on the reference box, so it is what
-# this repo pins. Installed there on 2026-08-27 by 00_install_codex_cli.sh (not
-# by Codex's own self-update), and verified: `codex --version` reports 0.150.1,
-# `codex doctor` is clean (19 ok / 0 warn / 0 fail, and no longer offers a newer
-# release), and the installer's own final managed-state check passes on a
-# re-run. A full model turn could NOT be exercised: the account's ChatGPT
-# entitlement went Pro -> free on 2026-08-26, and gpt-5.6-sol has returned HTTP
-# 400 on every client since - 0.145.0 and 0.150.1 alike - so that gate is an
-# account fact, not a release regression. Do NOT bump this line without
-# installing and exercising the release first; the pin records a verified
-# version, not the newest one.
+# Keep this as an exact release pin. Before changing it, install and exercise the
+# candidate release, run `codex --version` and `codex doctor`, complete a model
+# turn, and confirm the installer's final managed-state check passes on a re-run.
 #
-# Codex self-updates in place, so the release tree drifts past this pin on a
-# live box. 00_install_codex_cli.sh prunes any non-pinned release directory back
-# to this version rather than refusing, so re-running it re-asserts the pin.
-CODEX_CLI_VERSION=0.150.1
+# Codex can self-update in place, so the live release tree may drift past this
+# pin. 00_install_codex_cli.sh prunes every non-pinned release directory and
+# re-asserts this exact version whenever it runs.
+CODEX_CLI_VERSION=0.153.4

@@ -59,7 +59,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 | Docker CE + plugins | Engine/CLI `29.7.2`; containerd `2.3.4`; Buildx `0.36.1`; Compose `5.5.0` (exact Docker noble package revisions in `versions.sh`) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.1-1` (and matching libs) |
 | TeamViewer | `15.78.3` (version-specific dl.teamviewer.com URL + SHA-256) |
-| OpenAI Codex CLI | `0.150.1` standalone release; default model `gpt-5.6-sol` |
+| OpenAI Codex CLI | `0.153.4` standalone release; default model `gpt-5.6-sol` |
 
 Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins. The Docker installer refuses an installed component newer than its tested pin with an explicit stale-pin error; it never silently downgrades a newer host to make the file agree with reality.
 
