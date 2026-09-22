@@ -108,4 +108,4 @@ TEAMVIEWER_DEB_SHA256=c2b98b22bf2a34bbdf5b930c8fa7da17fba195d83d0e3f9e0e695c9043
 # Codex can self-update in place, so the live release tree may drift past this
 # pin. 00_install_codex_cli.sh prunes every non-pinned release directory and
 # re-asserts this exact version whenever it runs.
-CODEX_CLI_VERSION=0.153.4
+CODEX_CLI_VERSION=0.156.0
