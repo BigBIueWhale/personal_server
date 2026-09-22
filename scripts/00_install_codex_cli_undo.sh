@@ -77,7 +77,7 @@ MANAGED_CONFIG = """# Managed by scripts/00_install_codex_cli.sh.
 # - Disable prompt history persistence, analytics, feedback, and startup update
 #   checks on this personal infrastructure workstation.
 
-model = "gpt-5.6-sol"
+model = "gpt-6-sol"
 model_provider = "openai"
 model_reasoning_effort = "xhigh"
 plan_mode_reasoning_effort = "xhigh"

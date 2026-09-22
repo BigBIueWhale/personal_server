@@ -59,7 +59,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 | Docker CE + plugins | Engine/CLI `29.7.2`; containerd `2.3.4`; Buildx `0.36.1`; Compose `5.5.0` (exact Docker noble package revisions in `versions.sh`) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.19.1-1` (and matching libs) |
 | TeamViewer | `15.78.3` (version-specific dl.teamviewer.com URL + SHA-256) |
-| OpenAI Codex CLI | `0.156.0` standalone release; default model `gpt-5.6-sol` |
+| OpenAI Codex CLI | `0.156.0` standalone release; default model `gpt-6-sol` |
 
 Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins. The Docker installer refuses an installed component newer than its tested pin with an explicit stale-pin error; it never silently downgrades a newer host to make the file agree with reality.
 
@@ -182,7 +182,7 @@ Reference: [`scripts/00_install_codex_cli.sh`](./scripts/00_install_codex_cli.sh
 
 1. Installs or upgrades the standalone Codex CLI to `CODEX_CLI_VERSION` from [`scripts/lib/versions.sh`](./scripts/lib/versions.sh) using OpenAI's installer at `https://chatgpt.com/codex/install.sh --release`.
 2. Adds one exact `/home/<user>/.local/bin` PATH block to `/home/<user>/.bashrc`, refusing duplicate Codex blocks or upstream Codex installer blocks.
-3. Replaces only explicit known config states with one exact managed `/home/<user>/.codex/config.toml` containing `model = "gpt-5.6-sol"`, `model_provider = "openai"`, `model_reasoning_effort = "xhigh"`, `plan_mode_reasoning_effort = "xhigh"`, `approval_policy = "never"`, and `sandbox_mode = "danger-full-access"`. The tables Codex writes for itself while running — `[projects.*]` trust levels, `[tui.*]`, `[notice]`, `[mcp_servers.*]` — are recognised as Codex's own state, preserved verbatim, and carried across a migration; they are never rewritten and never merged into the managed block.
+3. Replaces only explicit known config states with one exact managed `/home/<user>/.codex/config.toml` containing `model = "gpt-6-sol"`, `model_provider = "openai"`, `model_reasoning_effort = "xhigh"`, `plan_mode_reasoning_effort = "xhigh"`, `approval_policy = "never"`, and `sandbox_mode = "danger-full-access"`. The tables Codex writes for itself while running — `[projects.*]` trust levels, `[tui.*]`, `[notice]`, `[mcp_servers.*]` — are recognised as Codex's own state, preserved verbatim, and carried across a migration; they are never rewritten and never merged into the managed block.
 4. Deletes `/home/<user>/.codex/models_cache.json` when it was written by a Codex client other than the pinned one, and prunes any non-pinned standalone Codex release directory after the pinned release is installed.
 5. Refuses while stale **host** Codex processes from an old standalone or npm install are still running, because those processes can recreate old model-cache state after the files are cleaned. Linux processes visible through host `/proc` but running in descendant/container PID namespaces are excluded before command-line or executable reconnaissance; the installer never signals processes, and release/cache cleanup remains confined to exact paths under the host user's managed `~/.codex`.
 
