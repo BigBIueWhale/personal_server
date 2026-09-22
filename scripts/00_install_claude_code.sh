@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/00_install_claude_code.sh — install Claude Code CLI and configure
-# max-effort defaults for Opus 5 (native 1M context).
+# Extra-high effort defaults for Opus 5.5 (native 1M context).
 #
 # WHY THIS IS THE FIRST SCRIPT
 # ----------------------------
@@ -13,34 +13,33 @@
 # ------------------------------------------------------------------------
 #   (a) Install: pipe Anthropic's official binary installer
 #       (https://claude.ai/install.sh) into bash. Lands the binary at
-#       /home/<user>/.local/bin/claude. Skipped if the binary is already
-#       there.
+#       /home/<user>/.local/bin/claude. Re-running updates it on the latest
+#       channel when a newer release is available.
 #   (b) PATH: ensure /home/<user>/.local/bin is on PATH via /home/<user>/
 #       .bashrc (so subsequent terminal sessions can run `claude`). Skipped
 #       if any `export PATH=…` line already references `.local/bin`.
 #   (c) bashrc env block: append a marker-delimited block to
-#       /home/<user>/.bashrc with three env exports that lock in maximum
-#       thinking effort on Opus 5 (1M). Marker text is fixed and the
-#       block is verified byte-for-byte on re-run.
-#   (d) settings.json: merge five managed keys into /home/<user>/
+#       /home/<user>/.bashrc with five env exports that set Opus 5.5 and
+#       Extra-high effort for the main session and all subagents. Marker
+#       text is fixed and the block is verified byte-for-byte on re-run.
+#   (d) settings.json: merge seven managed keys into /home/<user>/
 #       .claude/settings.json. Pre-existing user-set keys are preserved.
-#       If any of our managed keys already exists with a value different
-#       from what we'd write, the script REFUSES.
+#       If any managed key differs, the script REFUSES.
 #   (e) CLAUDE.md: create /home/<user>/.claude/CLAUDE.md with the adaptive-
 #       thinking nudge text. If the file already exists with different
 #       content, the script REFUSES.
 #
-# IDEMPOTENCY (by design — re-running this script is safe)
-# --------------------------------------------------------
-# Every write is a three-way decision: already-correct → no-op; absent →
-# write; conflicting → REFUSE LOUDLY (never silently overwrite). Concretely:
+# CONFIGURATION SAFETY (by design — re-running this script is safe)
+# ---------------------------------------------------------------
+# The binary is updated from Anthropic's latest channel on every run.
+# Configuration writes are three-way decisions: already-correct → no-op;
+# absent → write; conflicting → REFUSE LOUDLY. Concretely:
 #
 #   - The .bashrc env block is bracketed by `# >>> claude code config …`
 #     and `# <<< claude code config …` markers. On re-run we extract the
 #     existing block and compare to what we'd write. Match → skipped.
-#     Mismatch (anyone — you, Claude, an editor — has changed a line
-#     inside the markers) → fatal. Fix the block by hand or delete it
-#     entirely, then re-run.
+#     Mismatch (anyone — you, Claude, an editor — changed a line inside
+#     the markers) → fatal. Fix the block by hand or delete it entirely.
 #   - settings.json is parsed as JSON. For each managed key we check:
 #     present-and-equal → leave alone; present-and-different → fatal;
 #     absent → set. Unmanaged keys are preserved untouched. The merged
@@ -49,9 +48,8 @@
 #   - CLAUDE.md is created only if absent. If it exists with our exact
 #     bytes, no-op. If it exists with anything else, fatal.
 #
-# This means the worst case for a re-run is "script complains and exits
-# non-zero". It does NOT silently double-append, double-edit, or revert
-# user changes.
+# It does NOT silently double-append, double-edit, or revert user
+# configuration changes.
 #
 # RUN AS THE DESKTOP USER (NOT sudo)
 # ----------------------------------
@@ -101,23 +99,26 @@ CLAUDE_BIN="$LOCAL_BIN/claude"
 
 INSTALLER_URL="https://claude.ai/install.sh"
 
-section "(a) install Claude Code via $INSTALLER_URL"
+section "(a) install/update Claude Code via $INSTALLER_URL"
 
 if [ -e "$CLAUDE_BIN" ]; then
     [ -x "$CLAUDE_BIN" ] || die "$CLAUDE_BIN exists but is not executable — refusing to touch it"
-    info "$CLAUDE_BIN already exists — skipping installer (re-run is idempotent)"
-else
-    info "downloading and running $INSTALLER_URL"
-    curl -fsSL "$INSTALLER_URL" | bash
-    [ -x "$CLAUDE_BIN" ] \
-        || die "after running installer, $CLAUDE_BIN does not exist or is not executable — installer must have failed"
 fi
+info "downloading and running $INSTALLER_URL (latest channel)"
+curl -fsSL "$INSTALLER_URL" | bash
+[ -x "$CLAUDE_BIN" ] \
+    || die "after running installer, $CLAUDE_BIN does not exist or is not executable — installer must have failed"
 
 # Run --version via full path; we have not yet confirmed PATH includes ~/.local/bin
 # in this shell (that's step (b) below).
 VER_LINE="$("$CLAUDE_BIN" --version 2>&1 | head -1 || true)"
 [ -n "$VER_LINE" ] || die "'$CLAUDE_BIN --version' produced no output"
 info "claude --version: $VER_LINE"
+CLAUDE_VERSION="${VER_LINE%% *}"
+[[ "$CLAUDE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+    || die "cannot parse Claude Code version from '$VER_LINE'"
+dpkg --compare-versions "$CLAUDE_VERSION" ge 2.1.280 \
+    || die "Opus 5.5 requires Claude Code 2.1.280 or later, got $CLAUDE_VERSION"
 
 # ---------------------------------------------------------------------------
 # (b) ensure ~/.local/bin is on PATH in ~/.bashrc
@@ -147,29 +148,25 @@ fi
 # ---------------------------------------------------------------------------
 #
 # Why each export — recap (full justification is in the repo's commit
-# history; quoting is verified against Anthropic's docs as of 2026-06):
+# history; values are verified against Anthropic's current docs):
 #
-#   CLAUDE_CODE_EFFORT_LEVEL=max
-#       Only persistent path to 'max'. The env var is highest in the
-#       precedence chain (env > skill/subagent frontmatter > /effort >
-#       settings.json effortLevel > model default). settings.json's
-#       `effortLevel` field cannot hold "max" — the schema enum drops it
-#       (anthropics/claude-code GitHub issue #50557, closed as "not
-#       planned" — this is the intended design, not a bug awaiting fix).
-#       Extra-important on Opus 5: the model default effort is `high`, so
-#       without this env var Claude Code silently drops two notches
-#       (max -> xhigh -> high) on the first session.
+#   CLAUDE_CODE_EFFORT_LEVEL=xhigh
+#       The environment variable sets Extra-high effort for Opus 5.5 in
+#       terminal and GUI launches, including subagents. Opus 5.5 otherwise
+#       defaults to `medium`.
 #
-#   ANTHROPIC_MODEL='claude-opus-5[1m]'
-#       Pin the exact model with 1M context via the `[1m]` suffix — the
-#       same convention the rest of this box uses. (Opus 5 serves 1M
-#       natively, so the suffix is explicit rather than required; Claude
-#       Code accepts it and treats it as the 1M model.) Pinning the full ID
-#       is immune to the `opus` alias, which now resolves to Opus 5 and
-#       will move again when the next Opus ships.
+#   ANTHROPIC_MODEL='claude-opus-5-5'
+#       Pin the exact model. Opus 5.5 has a native 1M context window, so
+#       no `[1m]` suffix is needed. The full ID does not drift with the
+#       `opus` alias when a later Opus ships.
+#
+#   CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5'
+#   CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
+#       Pin every subagent, including built-in Explore and Plan, to the
+#       same model even when an agent definition requests another model.
 #
 #   CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
-#       Raise the per-response output ceiling to Opus 5's max (128k) so
+#       Raise the per-response output ceiling to Opus 5.5's max (128k) so
 #       that adaptive thinking + the answer have room to breathe (they
 #       share this budget).
 #
@@ -185,13 +182,15 @@ MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
 # refuses to touch the file.
 read -r -d '' EXPECTED_BLOCK <<EOF || true
 $MARKER_BEGIN
-# Lock in maximum thinking effort for Opus 5 (1M context).
+# Lock in Extra-high thinking effort for Opus 5.5 (1M context).
 # DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
 # will refuse to run if anything inside the markers has been changed.
 # To customize, delete the entire block (markers and all), edit the script
 # to match what you want, then re-run.
-export CLAUDE_CODE_EFFORT_LEVEL=max
-export ANTHROPIC_MODEL='claude-opus-5[1m]'
+export CLAUDE_CODE_EFFORT_LEVEL=xhigh
+export ANTHROPIC_MODEL='claude-opus-5-5'
+export CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5'
+export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 $MARKER_END
 EOF
@@ -229,15 +228,17 @@ fi
 # ---------------------------------------------------------------------------
 #
 # Managed keys (top-level):
-#     model                  = "claude-opus-5[1m]"
-#     effortLevel            = "xhigh"          (fallback: schema drops "max")
-#     showThinkingSummaries  = true             (Opus 5 thinks by default;
+#     model                  = "claude-opus-5-5"
+#     effortLevel            = "xhigh"          (also applies to older models)
+#     showThinkingSummaries  = true             (Opus 5.5 thinks by default;
 #                                                show a summary of that thinking)
 #
 # Managed keys (under env): duplicates of the bashrc exports, so any
 # launch path that doesn't source .bashrc (GNOME/KDE desktop launchers,
-# IDE-integrated terminals) still gets max effort.
-#     env.CLAUDE_CODE_EFFORT_LEVEL    = "max"
+# IDE-integrated terminals) still gets Extra-high effort.
+#     env.CLAUDE_CODE_EFFORT_LEVEL    = "xhigh"
+#     env.CLAUDE_CODE_SUBAGENT_MODEL = "claude-opus-5-5"
+#     env.CLAUDE_CODE_SUBAGENT_MODEL_FORCE = "1"
 #     env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = "128000"
 #
 # Behavior on re-run: each managed key is checked individually. If absent
@@ -268,12 +269,14 @@ import sys
 src, dst = sys.argv[1], sys.argv[2]
 
 WANT = {
-    "model": "claude-opus-5[1m]",
+    "model": "claude-opus-5-5",
     "effortLevel": "xhigh",
     "showThinkingSummaries": True,
 }
 WANT_ENV = {
-    "CLAUDE_CODE_EFFORT_LEVEL": "max",
+    "CLAUDE_CODE_EFFORT_LEVEL": "xhigh",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
 }
 
@@ -340,7 +343,7 @@ cat -- "$SETTINGS"
 # (e) ~/.claude/CLAUDE.md adaptive-thinking nudge
 # ---------------------------------------------------------------------------
 #
-# Opus 5 always uses adaptive reasoning — there is no API switch to force
+# Opus 5.5 always uses adaptive reasoning — there is no API switch to force
 # fixed-large thinking. The only documented way to bias the per-turn
 # adaptive trigger upward is system-prompt / CLAUDE.md guidance:
 # https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
@@ -378,4 +381,4 @@ fi
 section "success — Claude Code installed and configured"
 info "Open a NEW shell (or run 'source ~/.bashrc') so the new env block takes effect."
 info "Then run 'claude' and walk through the authentication flow on first launch."
-info "Inside a session, verify max effort with the '/effort' slash command."
+info "Inside a session, verify Extra-high effort with the '/effort' slash command."

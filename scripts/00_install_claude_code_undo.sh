@@ -7,16 +7,17 @@
 #   (e) ~/.claude/CLAUDE.md: deletes the file ONLY IF it exists with the
 #       exact byte content the install script writes (335 bytes, ending in
 #       'patterns.\n').
-#   (d) ~/.claude/settings.json: removes the five managed keys (three top-
-#       level: model, effortLevel, showThinkingSummaries; two under env:
-#       CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_MAX_OUTPUT_TOKENS). Refuses
+#   (d) ~/.claude/settings.json: removes the seven managed keys (three top-
+#       level: model, effortLevel, showThinkingSummaries; four under env:
+#       CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_SUBAGENT_MODEL,
+#       CLAUDE_CODE_SUBAGENT_MODEL_FORCE, CLAUDE_CODE_MAX_OUTPUT_TOKENS). Refuses
 #       if ANY managed key is missing, or has a value other than the
 #       install script's WANT. Unmanaged keys you have added (e.g. theme,
 #       skipDangerousModePermissionPrompt) are preserved untouched. If the
 #       env block becomes empty after removal, the env key itself is also
 #       removed.
 #   (c) ~/.bashrc marker-bracketed env block: removes the exact byte
-#       sequence (leading newline + 10-line block + trailing newline) the
+#       sequence (leading newline + 12-line block + trailing newline) the
 #       install script appended. Refuses unless that byte sequence appears
 #       EXACTLY ONCE in the file.
 #   (b) ~/.bashrc PATH addition: removes the exact 3-newline / 2-line
@@ -47,28 +48,24 @@
 # The script never modifies a file partially. It either fully reverts
 # every step, or touches nothing at all.
 #
-# MODEL VERSION COUPLING
+# MODEL COUPLING
 # ----------------------
-# The install script's `model` value (and its derived "Opus X[.Y]" comment
-# wording) change between model releases. The other four managed keys
-# (effortLevel=xhigh, showThinkingSummaries=true, env.CLAUDE_CODE_EFFORT_
-# LEVEL=max, env.CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000) and the rest of
-# the marker-block prose are constant across versions.
+# This script reconstructs the installer-managed model block from the model
+# argument and verifies its current Extra-high effort settings.
 #
 # This script REQUIRES the model string as its single positional argument
 # — no default, no silent fallback. You must pass the exact ANTHROPIC_
-# MODEL value that's currently on disk, e.g. 'claude-opus-5[1m]' (or an older
-# 'claude-opus-4-8[1m]'). If the on-disk state doesn't match the model
-# you pass, the script refuses. If you forget to pass it, or pass the
+# MODEL value that's currently on disk, e.g. 'claude-opus-5-5'. If the
+# on-disk state doesn't match the model you pass, the script refuses.
+# If you forget to pass it, or pass the
 # wrong number of args, or pass anything beginning with '-', the script
 # refuses with a usage message.
 #
 # Usage:
 #   bash scripts/00_install_claude_code_undo.sh MODEL
 #
-# Examples:
-#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-5[1m]'
-#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-4-8[1m]'
+# Example:
+#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-5-5'
 #
 # After it succeeds, open a NEW shell (or `source ~/.bashrc`) so the
 # removed env vars are no longer set in subsequent processes, then re-run
@@ -87,9 +84,9 @@ USAGE='Usage: bash 00_install_claude_code_undo.sh MODEL
 
 Required positional argument:
   MODEL    The ANTHROPIC_MODEL value currently written on disk by
-           00_install_claude_code.sh, e.g. claude-opus-5[1m] or
-           claude-opus-4-8[1m]. No default — you must pass it explicitly
-           so this script cannot accidentally undo a different version'\''s
+           00_install_claude_code.sh, e.g. claude-opus-5-5.
+           No default — you must pass it explicitly so this script cannot
+           accidentally undo a different version'\''s
            state.
 
 This script accepts no flags. -h, --help, and any other dash-prefixed
@@ -138,7 +135,7 @@ CLAUDEMD="$CLAUDE_DIR/CLAUDE.md"
 MODEL="$1"
 HR_VERSION="$(printf '%s' "$MODEL" | sed -nE 's/^claude-opus-([0-9]+)(-[0-9]+)?(\[.*\])?$/\1\2/p' | tr '-' '.')"
 [ -n "$HR_VERSION" ] \
-    || die "could not derive human-readable Opus version from MODEL='$MODEL' (expected form: claude-opus-N, claude-opus-N-M, or claude-opus-N-M[1m])"
+    || die "could not derive human-readable Opus version from MODEL='$MODEL' (expected a claude-opus version ID)"
 
 MARKER_BEGIN='# >>> claude code config (managed by 00_install_claude_code.sh) >>>'
 MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
@@ -150,13 +147,15 @@ MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
 # EXPECTED_BLOCK ends with '<<<', not with '\n'. Verified empirically.
 read -r -d '' EXPECTED_BLOCK <<EOF || true
 $MARKER_BEGIN
-# Lock in maximum thinking effort for Opus $HR_VERSION (1M context).
+# Lock in Extra-high thinking effort for Opus $HR_VERSION (1M context).
 # DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
 # will refuse to run if anything inside the markers has been changed.
 # To customize, delete the entire block (markers and all), edit the script
 # to match what you want, then re-run.
-export CLAUDE_CODE_EFFORT_LEVEL=max
+export CLAUDE_CODE_EFFORT_LEVEL=xhigh
 export ANTHROPIC_MODEL='$MODEL'
+export CLAUDE_CODE_SUBAGENT_MODEL='$MODEL'
+export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 $MARKER_END
 EOF
@@ -212,14 +211,16 @@ STEP_B_APPEND = (
 )
 
 # Same WANT/WANT_ENV constants as the install script. MODEL is the only
-# one that varies per install-script version; the other four are stable.
+# one that varies per install-script version; the other six are stable.
 WANT = {
     "model":                 MODEL,
     "effortLevel":           "xhigh",
     "showThinkingSummaries": True,
 }
 WANT_ENV = {
-    "CLAUDE_CODE_EFFORT_LEVEL":      "max",
+    "CLAUDE_CODE_EFFORT_LEVEL":      "xhigh",
+    "CLAUDE_CODE_SUBAGENT_MODEL":    MODEL,
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
 }
 
@@ -238,7 +239,7 @@ n_c = bashrc_text.count(STEP_C_APPEND)
 if n_c != 1:
     problems.append(
         f"(c) ~/.bashrc: install script's marker-block append "
-        f"(leading-LF + 10-line block + trailing-LF, {len(STEP_C_APPEND)} bytes, "
+        f"(leading-LF + 12-line block + trailing-LF, {len(STEP_C_APPEND)} bytes, "
         f"derived for MODEL={MODEL!r}) must appear EXACTLY ONCE; found {n_c}. "
         f"Possible causes: the block was hand-edited; the block was installed "
         f"by a different model version (try passing that model as $1); the "
@@ -286,7 +287,7 @@ else:
         if env is None:
             problems.append(
                 f"(d) {SETTINGS}: env block is missing entirely "
-                f"(install script always creates env with two managed keys)"
+                f"(install script always creates env with four managed keys)"
             )
         elif not isinstance(env, dict):
             problems.append(
@@ -335,7 +336,7 @@ if problems:
 print("[info] Phase 1: all preconditions verified.")
 print(f"[info]   (c) ~/.bashrc: marker block present exactly once ({len(STEP_C_APPEND)} bytes)")
 print(f"[info]   (b) ~/.bashrc: PATH addition present: {'yes' if n_b == 1 else 'no (install skipped step b)'}")
-print(f"[info]   (d) {SETTINGS}: all 5 managed keys match install WANT")
+print(f"[info]   (d) {SETTINGS}: all 7 managed keys match install WANT")
 print(f"[info]   (e) {CLAUDEMD}: byte-for-byte match ({len(claudemd_text)} bytes)")
 
 # ---------------------------------------------------------------------------
@@ -368,10 +369,10 @@ def atomic_write(path, content):
 os.unlink(CLAUDEMD)
 print(f"[info]   (e) deleted {CLAUDEMD}")
 
-# (d) settings.json — strip the five managed keys. Preserves insertion
+# (d) settings.json — strip the seven managed keys. Preserves insertion
 # order of unmanaged keys (Python 3.7+ dict preserves insertion order, and
 # pop() does not reorder remaining items). Drops the env subtree only if
-# it becomes empty after removing both WANT_ENV keys.
+# it becomes empty after removing all WANT_ENV keys.
 for k in WANT:
     settings_data.pop(k, None)
 env_block = settings_data.get("env", {})
@@ -386,7 +387,7 @@ new_settings_text = json.dumps(settings_data, indent=2, sort_keys=False) + "\n"
 json.loads(new_settings_text)
 atomic_write(SETTINGS, new_settings_text)
 remaining_keys = list(settings_data.keys())
-print(f"[info]   (d) stripped 5 managed keys from {SETTINGS};"
+print(f"[info]   (d) stripped 7 managed keys from {SETTINGS};"
       f" remaining unmanaged keys: {remaining_keys or '(none)'}")
 
 # (c)+(b) ~/.bashrc — remove the marker block append, and (if present)
@@ -434,4 +435,4 @@ section "success — Claude Code configuration reverted"
 info "Open a NEW shell (or 'source ~/.bashrc') so the removed env vars are no"
 info "longer inherited by subsequently launched processes. Then re-run"
 info "scripts/00_install_claude_code.sh to re-apply with the current install"
-info "script's values (currently ANTHROPIC_MODEL=claude-opus-5[1m])."
+info "script's values (currently ANTHROPIC_MODEL=claude-opus-5-5)."

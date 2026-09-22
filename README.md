@@ -140,33 +140,36 @@ This is the first install step on purpose. Once Claude Code is running, Claude i
 bash scripts/00_install_claude_code.sh        # run as the desktop user, NOT sudo
 ```
 
-Reference: [`scripts/00_install_claude_code.sh`](./scripts/00_install_claude_code.sh). Five idempotent sub-steps:
+Reference: [`scripts/00_install_claude_code.sh`](./scripts/00_install_claude_code.sh). Five sub-steps:
 
-1. Install via Anthropic's official binary installer at `https://claude.ai/install.sh` — lands the binary at `/home/<user>/.local/bin/claude`.
+1. Install or update via Anthropic's official binary installer at `https://claude.ai/install.sh` — lands the binary at `/home/<user>/.local/bin/claude` and verifies Claude Code 2.1.280 or later, as required for Opus 5.5.
 2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` (skipped if any existing `export PATH=` line already references `.local/bin`).
-3. Append a marker-bracketed env block to `/home/<user>/.bashrc` with the three exports that lock in maximum thinking effort on Opus 5 (native 1M context): `CLAUDE_CODE_EFFORT_LEVEL=max`, `ANTHROPIC_MODEL='claude-opus-5[1m]'`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000`.
-4. Merge five managed keys into `/home/<user>/.claude/settings.json` — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, plus `env.CLAUDE_CODE_EFFORT_LEVEL=max` and `env.CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000`. Pre-existing keys you have added are preserved untouched.
-5. Create `/home/<user>/.claude/CLAUDE.md` with a one-paragraph adaptive-thinking nudge — Opus 5 always uses adaptive reasoning (no API switch to force fixed-large thinking on every turn), so a `CLAUDE.md` note is the documented way to bias the per-turn adaptive trigger upward.
+3. Append a marker-bracketed env block to `/home/<user>/.bashrc` with five exports: Opus 5.5 for the main session and all subagents, Extra-high (`xhigh`) effort, and the 128K output ceiling. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
+4. Merge seven managed keys into `/home/<user>/.claude/settings.json` — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, and four matching env settings for effort, subagent model, forced subagent model, and output ceiling. Pre-existing keys you have added are preserved untouched.
+5. Create `/home/<user>/.claude/CLAUDE.md` with a one-paragraph adaptive-thinking nudge — Opus 5.5 always uses adaptive reasoning, so a `CLAUDE.md` note biases the per-turn adaptive trigger upward.
 
-### Why max effort needs to be locked in three places
+### Why Extra-high effort is set in multiple places
 
-Each launch path catches a different one of the three; on its own each one has a hole:
+The two environment settings cover different launch paths. The settings key
+keeps the saved effort value consistent where Claude Code applies it:
 
 - `~/.bashrc` exports — caught by terminal sessions that source bashrc.
 - `~/.claude/settings.json` `env` block — caught by GNOME/KDE desktop launchers and IDE-integrated terminals, neither of which source `.bashrc`.
-- `~/.claude/settings.json` `effortLevel: "xhigh"` — fallback if both env paths fail. It cannot be `"max"` here: the schema enum drops the value (`anthropics/claude-code` issue [#50557](https://github.com/anthropics/claude-code/issues/50557), closed as *not planned* — by design, not a bug awaiting fix) and silently overrides to `xhigh`. So `xhigh` is the next-best persistent setting; the env paths above lift it back to `max`. Extra-relevant on Opus 5: the model's own default effort is `high`, so without the env paths Claude Code would silently drop two notches (max → xhigh → high) on the first session.
+- `~/.claude/settings.json` `effortLevel: "xhigh"` — keeps the same default on older models. Anthropic says this top-level user setting does not apply to Opus 5.5, which defaults to `medium`; the environment setting above is what selects Extra-high for Opus 5.5.
+
+`CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5'` together with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` makes the model apply even when an agent definition requests something else. Subagents inherit the session's thinking configuration, and the `CLAUDE_CODE_EFFORT_LEVEL=xhigh` environment value takes precedence over subagent-specific effort settings.
 
 ### Idempotency and refuse-on-tamper guarantees
 
-Every write is a three-way decision:
+The official installer updates the Claude Code binary on each run. Configuration writes use a three-way decision:
 
 - **Already-correct → no-op.**
 - **Absent → write.**
 - **Present-and-different → REFUSE LOUDLY** with a precise diagnostic; never silently overwrites and never silently double-applies.
 
-So a re-run is safe in both directions: same starting state → no change; drifted state → script aborts with a message pointing at the specific file and field that doesn't match. To recover from a refusal: edit the conflicting region back to the expected value (or delete it entirely), then re-run.
+So a re-run can update the CLI while leaving already-correct configuration unchanged. If managed configuration differs, the script aborts with a message pointing at the conflicting file and field. To recover from a refusal: edit the conflicting region to the expected value (or delete it entirely), then re-run.
 
-After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude` to authenticate on first launch, and verify max effort with the `/effort` slash command — should show `max` in the slider.
+After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude` to authenticate on first launch, and verify Extra-high effort with the `/effort` slash command — should show `xhigh` in the slider.
 
 ---
 
