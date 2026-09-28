@@ -43,31 +43,35 @@ CUDA_TOOLKIT_VERSION=13.0.3-1
 CUDA_KEYRING_URL=https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
 
 # -- Docker CE and plugins -----------------------------------------------------
-# Engine + CLI 29.7.2 include the 29.6.1 BuildKit seccomp/AppArmor-frontend and
-# passwd/group parser fixes, the 29.6.2 BuildKit fixes, and the 29.7.0 fix for
-# CVE-2026-17106 (go-archive path traversal and arbitrary file overwrite).
+# These are the exact packages the reference box runs. Engine + CLI 29.8.1
+# include the 29.6.1 BuildKit seccomp/AppArmor-frontend and passwd/group parser
+# fixes, the 29.6.2 BuildKit fixes, the 29.7.0 fix for CVE-2026-17106
+# (go-archive path traversal and arbitrary file overwrite), and the 29.8.0
+# AppArmor/SELinux rules that stop containers reaching host VMs over AF_VSOCK
+# through the 32-bit socketcall(2) path.
 #
-# containerd 2.3.4 is the current Docker noble/stable patch release. Pin it
-# explicitly: docker-ce's dependency permits older compatible containerd.io
-# versions and therefore does not by itself keep this component at the tested
-# version.
+# containerd 2.3.5 carries the fixes for CVE-2026-53495, GHSA-7jxh-36q5-gcqv
+# and GHSA-rp3h-jf77-q9p4 (sensitive auth headers stripped when fetching
+# descriptor URLs) and runc 1.5.1. Pin it explicitly: docker-ce's dependency
+# permits older compatible containerd.io versions and therefore does not by
+# itself keep this component at the tested version.
 #
-# buildx 0.36.1 and Compose 5.5.0 are the matching current packages published
-# by Docker's noble/stable apt repository.
-DOCKER_CE_VERSION="5:29.7.2-1~ubuntu.24.04~noble"
-DOCKER_CE_CLI_VERSION="5:29.7.2-1~ubuntu.24.04~noble"
-CONTAINERD_IO_VERSION="2.3.4-1~ubuntu.24.04~noble"
-DOCKER_BUILDX_PLUGIN_VERSION="0.36.1-1~ubuntu.24.04~noble"
-DOCKER_COMPOSE_PLUGIN_VERSION="5.5.0-1~ubuntu.24.04~noble"
+# buildx 0.37.1 and Compose 5.5.1 are the matching packages published by
+# Docker's noble/stable apt repository.
+DOCKER_CE_VERSION="5:29.8.1-1~ubuntu.24.04~noble"
+DOCKER_CE_CLI_VERSION="5:29.8.1-1~ubuntu.24.04~noble"
+CONTAINERD_IO_VERSION="2.3.5-1~ubuntu.24.04~noble"
+DOCKER_BUILDX_PLUGIN_VERSION="0.37.1-1~ubuntu.24.04~noble"
+DOCKER_COMPOSE_PLUGIN_VERSION="5.5.1-1~ubuntu.24.04~noble"
 
 # -- NVIDIA Container Toolkit (Docker --gpus runtime) --------------------------
-# All four toolkit packages pinned to the same release. 1.19.1 is the latest
-# stable (bug-fix only over 1.19.0; the container-escape CVEs — NVIDIAScape
-# CVE-2025-23266/-23267 et al. — were already closed in 1.17.8).
-NVIDIA_CONTAINER_TOOLKIT_VERSION=1.19.1-1
-LIBNVIDIA_CONTAINER1_VERSION=1.19.1-1
-LIBNVIDIA_CONTAINER_TOOLS_VERSION=1.19.1-1
-NVIDIA_CONTAINER_TOOLKIT_BASE_VERSION=1.19.1-1
+# All four toolkit packages pinned to the same release, the one the reference
+# box runs. 1.20.0 and 1.20.1 list no security fixes; the container-escape CVEs
+# (NVIDIAScape CVE-2025-23266/-23267 et al.) were already closed in 1.17.8.
+NVIDIA_CONTAINER_TOOLKIT_VERSION=1.20.1-1
+LIBNVIDIA_CONTAINER1_VERSION=1.20.1-1
+LIBNVIDIA_CONTAINER_TOOLS_VERSION=1.20.1-1
+NVIDIA_CONTAINER_TOOLKIT_BASE_VERSION=1.20.1-1
 # CUDA base image used for the GPU passthrough smoke test.
 CUDA_SMOKE_TEST_IMAGE=nvidia/cuda:12.8.0-base-ubuntu24.04
 
@@ -76,9 +80,9 @@ CUDA_SMOKE_TEST_IMAGE=nvidia/cuda:12.8.0-base-ubuntu24.04
 # download.teamviewer.com URL serves whatever is current and CANNOT be pinned;
 # the dl.teamviewer.com path with version_15x/<file>_<version>_amd64.deb is the
 # version-specific redirect target and IS stable.
-TEAMVIEWER_VERSION=15.78.3
+TEAMVIEWER_VERSION=15.81.5
 TEAMVIEWER_DEB_URL="https://dl.teamviewer.com/download/linux/version_15x/teamviewer_${TEAMVIEWER_VERSION}_amd64.deb"
-TEAMVIEWER_DEB_SHA256=c2b98b22bf2a34bbdf5b930c8fa7da17fba195d83d0e3f9e0e695c9043aa9e6a
+TEAMVIEWER_DEB_SHA256=59fd0c99f3a2e6bc975863a9a9e9d952ede499080909aaadfdf13a67f6eb31e2
 
 # -- Developer toolchain (intentionally unpinned) ------------------------------
 # scripts/11_install_developer_toolchain.sh installs four components that are
