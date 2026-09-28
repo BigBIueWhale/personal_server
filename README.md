@@ -144,8 +144,8 @@ Reference: [`scripts/00_install_claude_code.sh`](./scripts/00_install_claude_cod
 
 1. Install or update via Anthropic's official binary installer at `https://claude.ai/install.sh` — lands the binary at `/home/<user>/.local/bin/claude` and verifies Claude Code 2.1.280 or later, as required for Opus 5.5.
 2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` (skipped if any existing `export PATH=` line already references `.local/bin`).
-3. Append a marker-bracketed env block to `/home/<user>/.bashrc` with five exports: Opus 5.5 for the main session and all subagents, Extra-high (`xhigh`) effort, and the 128K output ceiling. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
-4. Merge seven managed keys into `/home/<user>/.claude/settings.json` — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, and four matching env settings for effort, subagent model, forced subagent model, and output ceiling. Pre-existing keys you have added are preserved untouched.
+3. Append a marker-bracketed env block to `/home/<user>/.bashrc` (or replace the previous revision's block in place) with five exports: Opus 5.5 for the main session and all subagents, Extra-high (`xhigh`) effort, and the 128K output ceiling. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
+4. Merge seven managed keys into `/home/<user>/.claude/settings.json` (upgrading the previous revision's values) — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, and four matching env settings for effort, subagent model, forced subagent model, and output ceiling. Pre-existing keys you have added are preserved untouched.
 5. Create `/home/<user>/.claude/CLAUDE.md` with a one-paragraph adaptive-thinking nudge — Opus 5.5 always uses adaptive reasoning, so a `CLAUDE.md` note biases the per-turn adaptive trigger upward.
 
 ### Why Extra-high effort is set in multiple places
@@ -161,13 +161,14 @@ keeps the saved effort value consistent where Claude Code applies it:
 
 ### Idempotency and refuse-on-tamper guarantees
 
-The official installer updates the Claude Code binary on each run. Configuration writes use a three-way decision:
+The official installer updates the Claude Code binary on each run. Configuration writes are decided per managed item:
 
 - **Already-correct → no-op.**
 - **Absent → write.**
-- **Present-and-different → REFUSE LOUDLY** with a precise diagnostic; never silently overwrites and never silently double-applies.
+- **Exactly as the previous revision of the script left it → upgrade in place.** For the `.bashrc` block that means byte-identical to the previous block; for `settings.json`, every previously managed key holding its previous value (compared type-strictly) and none of the keys added since.
+- **Anything else → REFUSE LOUDLY** with a precise diagnostic; never silently overwrites and never silently double-applies.
 
-So a re-run can update the CLI while leaving already-correct configuration unchanged. If managed configuration differs, the script aborts with a message pointing at the conflicting file and field. To recover from a refusal: edit the conflicting region to the expected value (or delete it entirely), then re-run.
+Every managed item is checked before anything changes, the binary update included, so a refusal leaves the machine as it was. A re-run therefore updates the CLI and moves configuration from the previous revision to the current one, and leaves already-correct configuration unchanged. If managed configuration differs in any other way, the script aborts with a message pointing at the conflicting file and field. To recover from a refusal: edit the conflicting region to the expected value (or delete it entirely), then re-run.
 
 After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude` to authenticate on first launch, and verify Extra-high effort with the `/effort` slash command — should show `xhigh` in the slider.
 
