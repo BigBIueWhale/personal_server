@@ -72,7 +72,7 @@ To upgrade a component:
 3. Re-run [`network_security/verify_network_security.py`](./network_security/verify_network_security.py) to confirm posture is unchanged.
 4. Commit.
 
-NVIDIA is the one stack pinned to a **branch** rather than a frozen point version. Its kernel module is Canonical's prebuilt, signed `linux-modules-nvidia-595-open-generic-hwe-24.04`, versioned to the HWE kernel ABI and rebuilt against the current 595 point release for each new kernel; the userspace `nvidia-driver` / `nvidia-utils` packages therefore track that same point release through `noble-updates`. Freezing them to an exact version would desync userspace from the kernel-coupled module and break `nvidia-smi` on the next kernel bump. The branch is overridable via the `DRIVER_BRANCH` env var (e.g., `sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh`).
+NVIDIA is the one stack pinned to a **branch** rather than a frozen point version. Its kernel module is Canonical's prebuilt, signed `linux-modules-nvidia-595-open-generic-hwe-24.04`, versioned to the HWE kernel ABI and rebuilt against the current 595 point release for each new kernel; the userspace `nvidia-driver` / `nvidia-utils` packages therefore track that same point release through `noble-updates`. Freezing them to an exact version would desync userspace from the kernel-coupled module and break `nvidia-smi` on the next kernel bump. Automatic updates keep that coupling only if `unattended-upgrades` can install the module along with the kernel: by default it takes just `noble-security`, where new HWE kernels and their modules land, but a new module can require a driver point release that only `noble-updates` carries. [§9](#9-nvidia-driver-and-kernel-module) therefore lets it take `noble-updates` `restricted` and `multiverse` as well. The branch is overridable via the `DRIVER_BRANCH` env var (e.g., `sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh`).
 
 ---
 
@@ -121,7 +121,7 @@ Boot from the USB stick. In the live-image session before installation:
    - **Wi-Fi and Bluetooth firmware blobs** that are not in `main`.
    - **Restricted media codecs** (MP3, AAC, H.264 userland) for desktop usability.
 
-   The third-party checkbox installs the driver **and** Canonical's prebuilt signed kernel module (`linux-modules-nvidia-595-open-generic-hwe-24.04`) — that signed module is what carries the driver across kernel upgrades, with no local rebuild or signing key. You'll still run [§9](#9-nvidia-driver-and-kernel-module) afterwards to assert the pinned branch and add the explicit `nvidia-utils` package.
+   The third-party checkbox installs the driver **and** Canonical's prebuilt signed kernel module (`linux-modules-nvidia-595-open-generic-hwe-24.04`) — that signed module is what carries the driver across kernel upgrades, with no local rebuild or signing key, provided the module is installed together with each new kernel (see [§9](#9-nvidia-driver-and-kernel-module)). You'll still run [§9](#9-nvidia-driver-and-kernel-module) afterwards to assert the pinned branch and add the explicit `nvidia-utils` package.
 
 After install completes and the box reboots:
 
@@ -275,7 +275,9 @@ Reference: [`scripts/06_install_nvidia_driver.sh`](./scripts/06_install_nvidia_d
 - `linux-modules-nvidia-${BRANCH}-open-generic-hwe-24.04` — Canonical's prebuilt, signed kernel module, versioned to the HWE kernel ABI. Naming it explicitly makes apt satisfy the driver's module-provider dependency with this prebuilt module (and pulls the matching per-kernel `linux-modules-nvidia-${BRANCH}-open-<kver>` alongside every new HWE kernel, so the module survives kernel upgrades with no local rebuild or signing key). **The "Install third-party software" checkbox installs this too; §9 just asserts the pinned branch and adds the utils package.**
 - `nvidia-utils-${BRANCH}` — userspace utils including `nvidia-smi`.
 
-The script then runs `nvidia-smi` and confirms the loaded `nvidia` module resolves (via `dpkg -S`) to a `linux-modules-nvidia-${BRANCH}-open-*` package — i.e. the prebuilt signed module is the active provider for the running kernel. No per-kernel compile or local module-signing is involved; the module you run is the one Canonical built and signed.
+The script also writes `/etc/apt/apt.conf.d/51unattended-upgrades-nvidia`, which lets `unattended-upgrades` install from `noble-updates` `restricted` and `multiverse` (the rest of `noble-updates` stays manual). Without it, `unattended-upgrades` installs a new HWE kernel from `noble-security` but keeps its module back whenever the module requires a driver point release that only `noble-updates` has, and the next boot comes up with no NVIDIA driver. That happened with kernel `7.0.0-34`, whose module requires driver `595.91.07`.
+
+The script then runs `nvidia-smi` and confirms the loaded `nvidia` module resolves (via `dpkg -S`) to a `linux-modules-nvidia-${BRANCH}-open-*` package — i.e. the prebuilt signed module is the active provider for the running kernel. No per-kernel compile or local module-signing is involved; the module you run is the one Canonical built and signed. Finally it fails if any installed kernel lacks its `linux-modules-nvidia-${BRANCH}-open-<kver>` package, since GRUB boots the newest kernel whether or not the driver can load on it. Re-run it after a kernel update to check before rebooting.
 
 ---
 

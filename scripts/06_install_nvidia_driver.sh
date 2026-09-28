@@ -5,10 +5,19 @@
 # This installs the proprietary NVIDIA driver in its 'open' kernel-module
 # variant. The kernel module itself comes from Canonical's prebuilt, signed
 # linux-modules-nvidia-<branch>-open-generic-hwe-24.04 package: Canonical builds
-# and signs it against each HWE kernel ABI and ships it through noble-updates, so
-# it loads under Secure Boot with no local signing key and follows the HWE kernel
-# automatically on every kernel upgrade (the metapackage pulls the matching
-# per-kernel linux-modules-nvidia-<branch>-open-<kver> alongside each new kernel).
+# and signs it against each HWE kernel ABI, so it loads under Secure Boot with no
+# local signing key, and the metapackage pulls the matching per-kernel
+# linux-modules-nvidia-<branch>-open-<kver> alongside each new kernel.
+#
+# That only works if whatever installs a kernel can also install its module.
+# unattended-upgrades takes just noble and noble-security by default. A new HWE
+# kernel and its module arrive through noble-security, but the module can require
+# a driver point release that only noble-updates carries: the kernel then
+# upgrades, the module is kept back, and the next boot has no NVIDIA driver (seen
+# with kernel 7.0.0-34, whose module needs driver 595.91.07). This script lets
+# unattended-upgrades also take noble-updates restricted and multiverse, where
+# the module and driver packages live, and fails if any installed kernel lacks
+# its module.
 #
 # Naming that module package explicitly on the install line is load-bearing: it
 # makes apt satisfy nvidia-driver-<branch>-open's module-provider dependency with
@@ -72,6 +81,36 @@ if dpkg -s "nvidia-dkms-${DRIVER_BRANCH}-open" >/dev/null 2>&1; then
     dpkg --configure -a
 fi
 
+# Let unattended-upgrades install the module and driver from noble-updates, so a
+# kernel it installs from noble-security gets its module too (see the header).
+# The rest of noble-updates stays manual.
+section "unattended-upgrades: NVIDIA stack from noble-updates"
+UU_CONF=/etc/apt/apt.conf.d/51unattended-upgrades-nvidia
+# shellcheck disable=SC2016  # ${distro_*} are expanded by unattended-upgrades
+UU_PATTERNS=(
+    'origin=${distro_id},archive=${distro_codename}-updates,component=restricted'
+    'origin=${distro_id},archive=${distro_codename}-updates,component=multiverse'
+)
+UU_CONTENT="$(
+    printf '// Written by scripts/06_install_nvidia_driver.sh: lets unattended-upgrades\n'
+    printf '// install the NVIDIA driver and its prebuilt kernel modules from noble-updates.\n'
+    printf 'Unattended-Upgrade::Origins-Pattern {\n'
+    printf '        "%s";\n' "${UU_PATTERNS[@]}"
+    printf '};'
+)"
+if [ -f "$UU_CONF" ] && [ "$(cat "$UU_CONF")" = "$UU_CONTENT" ]; then
+    info "$UU_CONF already configured"
+else
+    printf '%s\n' "$UU_CONTENT" >"$UU_CONF"
+    chmod 0644 "$UU_CONF"
+    info "wrote $UU_CONF"
+fi
+UU_DUMP="$(apt-config dump Unattended-Upgrade::Origins-Pattern)"
+for pattern in "${UU_PATTERNS[@]}"; do
+    grep -qF -- "\"$pattern\";" <<<"$UU_DUMP" \
+        || die "apt configuration does not carry Origins-Pattern \"$pattern\" after writing $UU_CONF"
+done
+
 section "apt update"
 apt-get update
 
@@ -103,5 +142,20 @@ case "$OWNER" in
         ;;
 esac
 
+# Every installed kernel needs its module: GRUB boots the newest one, and a
+# kernel without the module boots with no NVIDIA driver at all.
+MISSING=""
+for KVER in $(dpkg-query -W -f='${db:Status-Status} ${Package}\n' 'linux-image-[0-9]*' 2>/dev/null \
+                  | awk '$1 == "installed" { sub(/^linux-image-/, "", $2); print $2 }'); do
+    PKG="linux-modules-nvidia-${DRIVER_BRANCH}-open-${KVER}"
+    if [ "$(dpkg-query -W -f='${db:Status-Status}' "$PKG" 2>/dev/null)" = "installed" ]; then
+        info "kernel $KVER: $PKG"
+    else
+        MISSING="$MISSING $PKG"
+    fi
+done
+[ -z "$MISSING" ] \
+    || die "installed kernel(s) without their NVIDIA module; booting one leaves the GPU without a driver. Install:$MISSING"
+
 section "success"
-info "driver branch $DRIVER_BRANCH installed; kernel module tracks the HWE kernel."
+info "driver branch $DRIVER_BRANCH installed; every installed kernel has its NVIDIA module."

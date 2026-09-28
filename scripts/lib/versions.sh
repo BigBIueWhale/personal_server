@@ -21,8 +21,9 @@
 # linux-modules-nvidia-${BRANCH}-open-generic-hwe-24.04 package. It is versioned
 # to the HWE kernel ABI (not the driver), built and signed by Canonical against
 # each new HWE kernel, and shipped through noble-updates — so it loads under
-# Secure Boot with no local signing key and follows the HWE kernel automatically
-# on every kernel upgrade. Because that signed module is rebuilt against the
+# Secure Boot with no local signing key and follows the HWE kernel on every
+# kernel upgrade, provided unattended-upgrades may install it (scripts/06 lets it
+# take noble-updates restricted and multiverse for that). Because that signed module is rebuilt against the
 # current 595 point release for each kernel, the userspace nvidia-driver /
 # nvidia-utils packages must track the same point release. NVIDIA is therefore
 # pinned to a BRANCH, not a frozen point version: freezing userspace would
