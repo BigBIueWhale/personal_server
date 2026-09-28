@@ -74,12 +74,19 @@ done
 # installed (a prior setup added it, or the OS installer selected it), remove it:
 # it fights the prebuilt signed module for the same /lib/modules/.../nvidia*.ko
 # and is what wedges dpkg on a driver or kernel bump. Removing it also clears any
-# half-configured state that conflict already caused. No-op when it is absent.
-if dpkg -s "nvidia-dkms-${DRIVER_BRANCH}-open" >/dev/null 2>&1; then
-    warn "nvidia-dkms-${DRIVER_BRANCH}-open is installed; removing it so the prebuilt signed module is the sole provider"
-    apt-get remove -y "nvidia-dkms-${DRIVER_BRANCH}-open"
-    dpkg --configure -a
-fi
+# half-configured state that conflict already caused. No-op when it is absent,
+# including when only its config files remain (dpkg state rc): that provides no
+# module, and `dpkg -s` would still report it as present.
+DKMS_PKG="nvidia-dkms-${DRIVER_BRANCH}-open"
+case "$(dpkg-query -W -f='${db:Status-Status}' "$DKMS_PKG" 2>/dev/null || true)" in
+    ""|not-installed|config-files)
+        ;;
+    *)
+        warn "$DKMS_PKG is installed; removing it so the prebuilt signed module is the sole provider"
+        apt-get remove -y "$DKMS_PKG"
+        dpkg --configure -a
+        ;;
+esac
 
 # Let unattended-upgrades install the module and driver from noble-updates, so a
 # kernel it installs from noble-security gets its module too (see the header).
