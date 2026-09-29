@@ -4,9 +4,9 @@
 #
 # WHAT IT UNDOES
 # --------------
-#   (c) Deletes ~/.codex/config.toml ONLY IF it exists with the exact byte
-#       content written by the installer. Different user config is preserved and
-#       causes a loud refusal.
+#   (c) Removes the exact installer-managed block from ~/.codex/config.toml.
+#       Codex-owned runtime tables appended to that block are preserved. Any
+#       other config content causes a loud refusal.
 #   (b) Removes the exact ~/.bashrc PATH snippet written by the installer, if
 #       present. If ~/.local/bin was already on PATH before install, there is
 #       nothing to remove.
@@ -16,8 +16,9 @@
 #
 # DESIGN - TWO-PHASE, ALL-OR-NOTHING
 # ----------------------------------
-# Phase 1 verifies exact byte sequences and collects every problem before any
-# write. If there is a problem, the script exits non-zero and touches nothing.
+# Phase 1 verifies the exact managed bytes and allowed runtime tables, and
+# collects every problem before any write. If there is a problem, the script
+# exits non-zero and touches nothing.
 # Phase 2 performs removals with tempfile + atomic rename where a rewrite is
 # needed.
 #
@@ -57,6 +58,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import tomllib
 
 BASHRC = pathlib.Path(os.environ["U_BASHRC"])
 CONFIG = pathlib.Path(os.environ["U_CONFIG"])
@@ -77,7 +79,7 @@ MANAGED_CONFIG = """# Managed by scripts/00_install_codex_cli.sh.
 # - Disable prompt history persistence, analytics, feedback, and startup update
 #   checks on this personal infrastructure workstation.
 
-model = "gpt-6-sol"
+model = "gpt-6.1-sol"
 model_provider = "openai"
 model_reasoning_effort = "xhigh"
 plan_mode_reasoning_effort = "xhigh"
@@ -125,15 +127,46 @@ STEP_B_APPEND = (
     "export PATH=\"$HOME/.local/bin:$PATH\"\n"
 )
 
+RUNTIME_TAIL_TABLES = ("projects", "tui", "mcp_servers", "notice")
+
+
+def atomic_write(path: pathlib.Path, content: str) -> None:
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".new.", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 problems: list[str] = []
-config_text = ""
+runtime_tail: str | None = None
 if CONFIG.exists():
-    if not CONFIG.is_file():
+    if CONFIG.is_symlink() or not CONFIG.is_file():
         problems.append(f"{CONFIG}: exists but is not a regular file")
     else:
         config_text = CONFIG.read_text(encoding="utf-8")
-        if config_text != MANAGED_CONFIG:
+        if config_text == MANAGED_CONFIG:
+            runtime_tail = ""
+        elif not config_text.startswith(MANAGED_CONFIG):
             problems.append(f"{CONFIG}: content differs from installer-managed bytes")
+        else:
+            tail = config_text[len(MANAGED_CONFIG):]
+            try:
+                tomllib.loads(config_text)
+                parsed_tail = tomllib.loads(tail)
+            except tomllib.TOMLDecodeError as error:
+                problems.append(f"{CONFIG}: invalid appended runtime tables: {error}")
+            else:
+                if not parsed_tail or any(table not in RUNTIME_TAIL_TABLES for table in parsed_tail):
+                    problems.append(f"{CONFIG}: contains content outside Codex-owned runtime tables")
+                else:
+                    runtime_tail = tail
 else:
     problems.append(f"{CONFIG}: managed config is missing")
 
@@ -151,22 +184,16 @@ if problems:
 
 print("[info] Phase 1: managed Codex config verified.")
 
-CONFIG.unlink()
-print(f"[info] deleted exact managed config {CONFIG}")
+if runtime_tail:
+    atomic_write(CONFIG, runtime_tail)
+    print(f"[info] removed managed config block and preserved Codex runtime tables in {CONFIG}")
+else:
+    CONFIG.unlink()
+    print(f"[info] deleted exact managed config {CONFIG}")
 
 if n_b == 1:
     new_bashrc = bashrc_text.replace(STEP_B_APPEND, "", 1)
-    fd, tmp = tempfile.mkstemp(prefix=BASHRC.name + ".new.", dir=str(BASHRC.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(new_bashrc)
-        os.replace(tmp, BASHRC)
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except FileNotFoundError:
-            pass
-        raise
+    atomic_write(BASHRC, new_bashrc)
     print(f"[info] removed Codex PATH snippet from {BASHRC}")
 else:
     print(f"[info] no installer-owned Codex PATH snippet in {BASHRC}; leaving PATH config alone")

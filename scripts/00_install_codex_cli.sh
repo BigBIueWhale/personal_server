@@ -9,7 +9,7 @@
 # than to a profile-picker workflow. Codex's equivalent durable settings are
 # approval_policy="never" plus sandbox_mode="danger-full-access" in
 # ~/.codex/config.toml. This script writes one direct, exact, managed config file
-# instead of creating profiles, pins the model to gpt-6-sol, and installs one
+# instead of creating profiles, pins the model to gpt-6.1-sol, and installs one
 # exact Codex CLI release.
 #
 # WHAT IT DOES (idempotently)
@@ -22,7 +22,7 @@
 #   (b) Ensure one exact ~/.bashrc PATH snippet for ~/.local/bin, refusing
 #       duplicate or upstream Codex PATH blocks.
 #   (c) Accept only explicit known config/cache/release-tree states, migrate
-#       those to the exact gpt-6-sol state, prune old Codex release/cache
+#       those to the exact gpt-6.1-sol state, prune old Codex release/cache
 #       leftovers, then verify the final state. Any other state refuses.
 #       "Exact" means the managed block is byte-exact; the tables Codex itself
 #       appends while running ([projects.*] trust levels, [tui.*], [notice],
@@ -171,11 +171,13 @@ FOREIGN_CODEX_MARKERS = (
 # migration input, not a generic fallback.
 OLD_LOCAL_CONFIG_SHA256 = "9846f898be46d8bdaeb33b4012cd6f54a53a0aafd939befcc7121384d5d4aa19"
 
-# Fingerprint of the immediately preceding installer-managed config. Keeping
-# its exact length and digest lets existing installs migrate, including their
-# Codex-owned runtime tables, without retaining an obsolete model selection.
-PREVIOUS_MANAGED_CONFIG_LENGTH = 1625
-PREVIOUS_MANAGED_CONFIG_SHA256 = "3ca37b4fcf5adbf8e3185645ee601eac0b899c15376d1afcf5c8b0bbd7d6d6b6"
+# Fingerprints of preceding installer-managed configs. Exact length and digest
+# permit migrations with Codex-owned runtime tables without retaining obsolete
+# model selections or accepting arbitrary user edits.
+PREVIOUS_MANAGED_CONFIG_FINGERPRINTS = (
+    (1625, "3ca37b4fcf5adbf8e3185645ee601eac0b899c15376d1afcf5c8b0bbd7d6d6b6"),
+    (1623, "1765d5ca4ecafc83a58a522fa0e8497723d6d6aa6a8994a2f78c70d3ef43aeb4"),
+)
 
 PATH_BLOCK = (
     "\n"
@@ -201,7 +203,7 @@ NEW_MANAGED_CONFIG = """# Managed by scripts/00_install_codex_cli.sh.
 # - Disable prompt history persistence, analytics, feedback, and startup update
 #   checks on this personal infrastructure workstation.
 
-model = "gpt-6-sol"
+model = "gpt-6.1-sol"
 model_provider = "openai"
 model_reasoning_effort = "xhigh"
 plan_mode_reasoning_effort = "xhigh"
@@ -388,18 +390,19 @@ def running_codex_process_problems() -> list[str]:
         except (FileNotFoundError, PermissionError, ProcessLookupError):
             exe = ""
 
-        # Identify Codex by the binary actually being executed, not by any
-        # substring of the whole command line: a script path like
-        # 00_install_codex_cli.sh, an editor with that file open, or a ~/codex/
-        # working directory all contain "codex" without being Codex.
-        candidates = [exe] + argv
+        # Identify Codex by its executable or a Node launcher script. Other
+        # arguments can mention Codex without running it (for example, a tmux
+        # session name or a shell command that invokes this installer).
+        candidates = [exe, argv[0]]
+        if os.path.basename(exe) in ("node", "nodejs") and len(argv) > 1:
+            candidates.append(argv[1])
         if not any(
             os.path.basename(c) in CODEX_BINARY_NAMES or "@openai/codex" in c
             for c in candidates
         ):
             continue
 
-        combined = " ".join(candidates)
+        combined = " ".join([exe] + argv)
         if PINNED_RELEASE_DIR in combined:
             continue  # a process from the pinned release is the managed one
         if any(marker in combined for marker in FOREIGN_CODEX_MARKERS):
@@ -467,10 +470,11 @@ def split_runtime_tail(text: str, head: str) -> str | None:
 
 
 def split_previous_managed_tail(text: str) -> str | None:
-    head = text[:PREVIOUS_MANAGED_CONFIG_LENGTH]
-    if hashlib.sha256(head.encode("utf-8")).hexdigest() != PREVIOUS_MANAGED_CONFIG_SHA256:
-        return None
-    return split_runtime_tail(text, head)
+    for length, digest in PREVIOUS_MANAGED_CONFIG_FINGERPRINTS:
+        head = text[:length]
+        if hashlib.sha256(head.encode("utf-8")).hexdigest() == digest:
+            return split_runtime_tail(text, head)
+    return None
 
 
 def config_state(problems: list[str]) -> str:
@@ -574,10 +578,10 @@ def commit() -> None:
 
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     if state["config"] == "new-managed":
-        print(f"[info] {CONFIG}: already exact managed gpt-6-sol config")
+        print(f"[info] {CONFIG}: already exact managed gpt-6.1-sol config")
     elif state["config"] == "new-managed+runtime":
         print(
-            f"[info] {CONFIG}: exact managed gpt-6-sol config plus Codex's own "
+            f"[info] {CONFIG}: exact managed gpt-6.1-sol config plus Codex's own "
             "runtime tables; leaving both intact"
         )
     else:
@@ -594,7 +598,7 @@ def commit() -> None:
             if not tail:
                 die(f"{CONFIG}: changed between validation and write; re-run the installer")
             print(f"[info] {CONFIG}: carrying Codex's runtime tables across the migration")
-        print(f"[info] {CONFIG}: replacing {state['config']} with exact managed gpt-6-sol config")
+        print(f"[info] {CONFIG}: replacing {state['config']} with exact managed gpt-6.1-sol config")
         atomic_write(CONFIG, NEW_MANAGED_CONFIG + tail)
 
     if state["cache"] == "stale-other-version":
@@ -621,7 +625,7 @@ def commit() -> None:
 
     final_problems: list[str] = []
     if config_state(final_problems) not in ("new-managed", "new-managed+runtime"):
-        final_problems.append(f"{CONFIG}: final config is not exact managed gpt-6-sol config")
+        final_problems.append(f"{CONFIG}: final config is not exact managed gpt-6.1-sol config")
     if BASHRC.read_text(encoding="utf-8").count(PATH_BLOCK) != 1:
         final_problems.append(f"{BASHRC}: final exact Codex PATH block count is not 1")
     final_cache = model_cache_state(final_problems)
@@ -700,4 +704,4 @@ section "success - Codex CLI installed and configured"
 info "Open a NEW shell (or run 'source ~/.bashrc') so PATH updates take effect."
 info "Run 'codex' and verify active state with /status."
 info "Pinned Codex CLI release: $CODEX_CLI_VERSION."
-info "Managed default: model=gpt-6-sol, approval_policy=never, sandbox_mode=danger-full-access."
+info "Managed default: model=gpt-6.1-sol, approval_policy=never, sandbox_mode=danger-full-access."
