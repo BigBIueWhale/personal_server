@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/00_install_claude_code.sh — install Claude Code CLI and configure
-# Extra-high effort defaults for Opus 5.5 (native 1M context).
+# Extra-high effort defaults for Opus 5.5 with 1M context (claude-opus-5-5[1m]).
 #
 # WHY THIS IS THE FIRST SCRIPT
 # ----------------------------
@@ -47,12 +47,12 @@
 #     every other byte of .bashrc kept. Any other mismatch (anyone — you,
 #     Claude, an editor — changed a line inside the markers) → fatal. Fix
 #     the block by hand or delete it entirely.
-#   - settings.json is parsed as JSON. For each managed key we check:
-#     present-and-equal → leave alone; present-and-different → fatal;
-#     absent → set. Values compare type-strictly (1 is not true). The one
-#     exception is a file holding exactly the previous revision's managed
-#     values and none of the keys added since: that is upgraded. Unmanaged
-#     keys are preserved untouched. The merged file is written via a
+#   - settings.json is parsed as JSON. Each managed key is decided on its
+#     own: present-and-equal → leave alone; absent → set; holding the value
+#     the previous revision of this script wrote → upgraded; any other value
+#     → fatal. Values compare type-strictly (1 is not true). A key added
+#     since the previous revision has no previous value, so it upgrades only
+#     from absent. Unmanaged keys are preserved untouched. The merged file is written via a
 #     tempfile + atomic rename, so a SIGINT mid-write cannot corrupt
 #     settings.json.
 #   - CLAUDE.md is created only if absent. If it exists with our exact
@@ -109,12 +109,12 @@ CLAUDE_BIN="$LOCAL_BIN/claude"
 #       terminal and GUI launches, including subagents. Opus 5.5 otherwise
 #       defaults to `medium`.
 #
-#   ANTHROPIC_MODEL='claude-opus-5-5'
-#       Pin the exact model. Opus 5.5 has a native 1M context window, so
-#       no `[1m]` suffix is needed. The full ID does not drift with the
-#       `opus` alias when a later Opus ships.
+#   ANTHROPIC_MODEL='claude-opus-5-5[1m]'
+#       Pin the exact model with its 1M-context suffix, the ID Claude Code's
+#       /model writes for Opus 5.5 (1M context). The full ID does not drift
+#       with the `opus` alias when a later Opus ships.
 #
-#   CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5'
+#   CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5[1m]'
 #   CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 #       Pin every subagent, including built-in Explore and Plan, to the
 #       same model even when an agent definition requests another model.
@@ -128,8 +128,9 @@ CLAUDE_BIN="$LOCAL_BIN/claude"
 # verified, or removed deterministically across re-runs.
 #
 # PREVIOUS_BLOCK, and PREVIOUS / PREVIOUS_ENV in settings_merge, are exactly
-# what the previous revision of this script wrote (claude-opus-5[1m] at max
-# effort). That state, and only that state, is upgraded in place; any other
+# what the previous revision of this script wrote (claude-opus-5-5, without
+# the 1M suffix, at xhigh effort). Those values, and only those, are upgraded
+# in place -- the .bashrc block as a whole, settings.json key by key; any other
 # difference from the current values is a hand edit and is refused.
 
 MARKER_BEGIN='# >>> claude code config (managed by 00_install_claude_code.sh) >>>'
@@ -143,8 +144,8 @@ $MARKER_BEGIN
 # To customize, delete the entire block (markers and all), edit the script
 # to match what you want, then re-run.
 export CLAUDE_CODE_EFFORT_LEVEL=xhigh
-export ANTHROPIC_MODEL='claude-opus-5-5'
-export CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5'
+export ANTHROPIC_MODEL='claude-opus-5-5[1m]'
+export CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5[1m]'
 export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 $MARKER_END
@@ -152,13 +153,15 @@ EOF
 
 read -r -d '' PREVIOUS_BLOCK <<EOF || true
 $MARKER_BEGIN
-# Lock in maximum thinking effort for Opus 5 (1M context).
+# Lock in Extra-high thinking effort for Opus 5.5 (1M context).
 # DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
 # will refuse to run if anything inside the markers has been changed.
 # To customize, delete the entire block (markers and all), edit the script
 # to match what you want, then re-run.
-export CLAUDE_CODE_EFFORT_LEVEL=max
-export ANTHROPIC_MODEL='claude-opus-5[1m]'
+export CLAUDE_CODE_EFFORT_LEVEL=xhigh
+export ANTHROPIC_MODEL='claude-opus-5-5'
+export CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5'
+export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 $MARKER_END
 EOF
@@ -245,8 +248,8 @@ PYEOF
 }
 
 # Decides the settings.json merge and, in write mode, writes the merged result
-# to DEST. Prints the state it found: current, missing (some managed keys
-# absent) or previous. Exits 2, naming every conflict, on anything else.
+# to DEST. Prints the state it found: current, previous (some managed keys
+# hold the previous revision's values) or missing (some are absent). Exits 2, naming every conflict, on anything else.
 #   settings_merge check SETTINGS
 #   settings_merge write SETTINGS DEST
 settings_merge() {
@@ -258,24 +261,26 @@ import sys
 mode, src = sys.argv[1], sys.argv[2]
 
 WANT = {
-    "model": "claude-opus-5-5",
+    "model": "claude-opus-5-5[1m]",
     "effortLevel": "xhigh",
     "showThinkingSummaries": True,
 }
 WANT_ENV = {
     "CLAUDE_CODE_EFFORT_LEVEL": "xhigh",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5-5[1m]",
     "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
 }
 # Exactly what the previous revision of this script managed.
 PREVIOUS = {
-    "model": "claude-opus-5[1m]",
+    "model": "claude-opus-5-5",
     "effortLevel": "xhigh",
     "showThinkingSummaries": True,
 }
 PREVIOUS_ENV = {
-    "CLAUDE_CODE_EFFORT_LEVEL": "max",
+    "CLAUDE_CODE_EFFORT_LEVEL": "xhigh",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5-5",
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
 }
 
@@ -309,23 +314,31 @@ env = data.get("env", {})
 if not isinstance(env, dict):
     fail(f"[fatal] {src} has 'env' but it is not a JSON object (got {type(env).__name__})")
 
+# Each managed key on its own: absent, the wanted value, or the value the
+# previous revision wrote. A file can hold a mix -- /model writes the model key
+# alone -- and is upgraded key by key. Any other value is a hand edit.
+def previous_value(have, previous, key):
+    return key in have and key in previous and same(have[key], previous[key])
+
+
+conflicts = [f"  {k}: have {data[k]!r}, want {v!r}"
+             for k, v in WANT.items()
+             if k in data and not same(data[k], v) and not previous_value(data, PREVIOUS, k)]
+conflicts += [f"  env.{k}: have {env[k]!r}, want {v!r}"
+              for k, v in WANT_ENV.items()
+              if k in env and not same(env[k], v) and not previous_value(env, PREVIOUS_ENV, k)]
+if conflicts:
+    fail(f"[fatal] existing values in {src} differ from what this script wants:",
+         *conflicts,
+         "Refusing to overwrite. To proceed: open the file by hand,",
+         "either change the values to the wanted ones or delete the",
+         "conflicting keys, then re-run this script.")
 if holds(data, WANT) and holds(env, WANT_ENV):
     state = "current"
-elif (holds(data, PREVIOUS) and holds(env, PREVIOUS_ENV)
-        and not (WANT.keys() - PREVIOUS.keys()) & data.keys()
-        and not (WANT_ENV.keys() - PREVIOUS_ENV.keys()) & env.keys()):
+elif (any(previous_value(data, PREVIOUS, k) and not same(data[k], v) for k, v in WANT.items())
+        or any(previous_value(env, PREVIOUS_ENV, k) and not same(env[k], v) for k, v in WANT_ENV.items())):
     state = "previous"
 else:
-    conflicts = [f"  {k}: have {data[k]!r}, want {v!r}"
-                 for k, v in WANT.items() if k in data and not same(data[k], v)]
-    conflicts += [f"  env.{k}: have {env[k]!r}, want {v!r}"
-                  for k, v in WANT_ENV.items() if k in env and not same(env[k], v)]
-    if conflicts:
-        fail(f"[fatal] existing values in {src} differ from what this script wants:",
-             *conflicts,
-             "Refusing to overwrite. To proceed: open the file by hand,",
-             "either change the values to the wanted ones or delete the",
-             "conflicting keys, then re-run this script.")
     state = "missing"
 
 print(state)
@@ -458,7 +471,7 @@ esac
 # ---------------------------------------------------------------------------
 #
 # Managed keys (top-level):
-#     model                  = "claude-opus-5-5"
+#     model                  = "claude-opus-5-5[1m]"
 #     effortLevel            = "xhigh"          (also applies to older models)
 #     showThinkingSummaries  = true             (Opus 5.5 thinks by default;
 #                                                show a summary of that thinking)
@@ -467,15 +480,15 @@ esac
 # launch path that doesn't source .bashrc (GNOME/KDE desktop launchers,
 # IDE-integrated terminals) still gets Extra-high effort.
 #     env.CLAUDE_CODE_EFFORT_LEVEL    = "xhigh"
-#     env.CLAUDE_CODE_SUBAGENT_MODEL = "claude-opus-5-5"
+#     env.CLAUDE_CODE_SUBAGENT_MODEL = "claude-opus-5-5[1m]"
 #     env.CLAUDE_CODE_SUBAGENT_MODEL_FORCE = "1"
 #     env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = "128000"
 #
 # Behavior on re-run: each managed key is checked individually. If absent
 # we set it; if present with the right value we leave it alone; if
-# present with a different value the script aborts with a precise
-# diagnostic. A file holding exactly the previous revision's managed values
-# is upgraded as a whole (see settings_merge). Unmanaged keys (yours: theme,
+# present with the previous revision's value we upgrade it; if present
+# with any other value the script aborts with a precise diagnostic (see
+# settings_merge). Unmanaged keys (yours: theme,
 # skipDangerousModePermissionPrompt, anything else you've added) are
 # preserved untouched.
 

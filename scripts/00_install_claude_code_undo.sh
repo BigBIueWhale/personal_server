@@ -55,7 +55,7 @@
 #
 # This script REQUIRES the model string as its single positional argument
 # — no default, no silent fallback. You must pass the exact ANTHROPIC_
-# MODEL value that's currently on disk, e.g. 'claude-opus-5-5'. If the
+# MODEL value that's currently on disk, e.g. 'claude-opus-5-5[1m]'. If the
 # on-disk state doesn't match the model you pass, the script refuses.
 # If you forget to pass it, or pass the
 # wrong number of args, or pass anything beginning with '-', the script
@@ -65,7 +65,7 @@
 #   bash scripts/00_install_claude_code_undo.sh MODEL
 #
 # Example:
-#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-5-5'
+#   bash scripts/00_install_claude_code_undo.sh 'claude-opus-5-5[1m]'
 #
 # After it succeeds, open a NEW shell (or `source ~/.bashrc`) so the
 # removed env vars are no longer set in subsequent processes, then re-run
@@ -84,7 +84,7 @@ USAGE='Usage: bash 00_install_claude_code_undo.sh MODEL
 
 Required positional argument:
   MODEL    The ANTHROPIC_MODEL value currently written on disk by
-           00_install_claude_code.sh, e.g. claude-opus-5-5.
+           00_install_claude_code.sh, e.g. claude-opus-5-5[1m].
            No default — you must pass it explicitly so this script cannot
            accidentally undo a different version'\''s
            state.
@@ -435,4 +435,4 @@ section "success — Claude Code configuration reverted"
 info "Open a NEW shell (or 'source ~/.bashrc') so the removed env vars are no"
 info "longer inherited by subsequently launched processes. Then re-run"
 info "scripts/00_install_claude_code.sh to re-apply with the current install"
-info "script's values (currently ANTHROPIC_MODEL=claude-opus-5-5)."
+info "script's values (currently ANTHROPIC_MODEL=claude-opus-5-5[1m])."

@@ -144,7 +144,7 @@ Reference: [`scripts/00_install_claude_code.sh`](./scripts/00_install_claude_cod
 
 1. Install or update via Anthropic's official binary installer at `https://claude.ai/install.sh` — lands the binary at `/home/<user>/.local/bin/claude` and verifies Claude Code 2.1.280 or later, as required for Opus 5.5.
 2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` (skipped if any existing `export PATH=` line already references `.local/bin`).
-3. Append a marker-bracketed env block to `/home/<user>/.bashrc` (or replace the previous revision's block in place) with five exports: Opus 5.5 for the main session and all subagents, Extra-high (`xhigh`) effort, and the 128K output ceiling. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
+3. Append a marker-bracketed env block to `/home/<user>/.bashrc` (or replace the previous revision's block in place) with five exports: Opus 5.5 with 1M context (`claude-opus-5-5[1m]`) for the main session and all subagents, Extra-high (`xhigh`) effort, and the 128K output ceiling. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
 4. Merge seven managed keys into `/home/<user>/.claude/settings.json` (upgrading the previous revision's values) — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, and four matching env settings for effort, subagent model, forced subagent model, and output ceiling. Pre-existing keys you have added are preserved untouched.
 5. Create `/home/<user>/.claude/CLAUDE.md` with a one-paragraph adaptive-thinking nudge — Opus 5.5 always uses adaptive reasoning, so a `CLAUDE.md` note biases the per-turn adaptive trigger upward.
 
@@ -157,7 +157,7 @@ keeps the saved effort value consistent where Claude Code applies it:
 - `~/.claude/settings.json` `env` block — caught by GNOME/KDE desktop launchers and IDE-integrated terminals, neither of which source `.bashrc`.
 - `~/.claude/settings.json` `effortLevel: "xhigh"` — keeps the same default on older models. Anthropic says this top-level user setting does not apply to Opus 5.5, which defaults to `medium`; the environment setting above is what selects Extra-high for Opus 5.5.
 
-`CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5'` together with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` makes the model apply even when an agent definition requests something else. Subagents inherit the session's thinking configuration, and the `CLAUDE_CODE_EFFORT_LEVEL=xhigh` environment value takes precedence over subagent-specific effort settings.
+`CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5[1m]'` together with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` makes the model apply even when an agent definition requests something else. Subagents inherit the session's thinking configuration, and the `CLAUDE_CODE_EFFORT_LEVEL=xhigh` environment value takes precedence over subagent-specific effort settings.
 
 ### Idempotency and refuse-on-tamper guarantees
 
@@ -165,7 +165,7 @@ The official installer updates the Claude Code binary on each run. Configuration
 
 - **Already-correct → no-op.**
 - **Absent → write.**
-- **Exactly as the previous revision of the script left it → upgrade in place.** For the `.bashrc` block that means byte-identical to the previous block; for `settings.json`, every previously managed key holding its previous value (compared type-strictly) and none of the keys added since.
+- **Exactly as the previous revision of the script left it → upgrade in place.** For the `.bashrc` block that means byte-identical to the previous block; for `settings.json`, decided key by key: a managed key holding the value the previous revision wrote (compared type-strictly) is upgraded, so a file where `/model` already set the new model is upgraded too. A key added since the previous revision upgrades only from absent.
 - **Anything else → REFUSE LOUDLY** with a precise diagnostic; never silently overwrites and never silently double-applies.
 
 Every managed item is checked before anything changes, the binary update included, so a refusal leaves the machine as it was. A re-run therefore updates the CLI and moves configuration from the previous revision to the current one, and leaves already-correct configuration unchanged. If managed configuration differs in any other way, the script aborts with a message pointing at the conflicting file and field. To recover from a refusal: edit the conflicting region to the expected value (or delete it entirely), then re-run.
