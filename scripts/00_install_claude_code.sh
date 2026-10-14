@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # scripts/00_install_claude_code.sh — install Claude Code CLI and configure
-# Extra-high effort defaults for Opus 5.5 with 1M context (claude-opus-5-5[1m]).
+# Extra-high effort, full autonomy (bypassPermissions), and privacy/anti-nag
+# defaults for Opus 5.5 with 1M context (claude-opus-5-5[1m]).
 #
 # WHY THIS IS THE FIRST SCRIPT
 # ----------------------------
@@ -21,12 +22,20 @@
 #       .bashrc (so subsequent terminal sessions can run `claude`). Skipped
 #       if any `export PATH=…` line already references `.local/bin`.
 #   (c) bashrc env block: append a marker-delimited block to
-#       /home/<user>/.bashrc with five env exports that set Opus 5.5 and
-#       Extra-high effort for the main session and all subagents. Marker
-#       text is fixed and the block is verified byte-for-byte on re-run.
-#   (d) settings.json: merge seven managed keys into /home/<user>/
-#       .claude/settings.json. Pre-existing user-set keys are preserved.
-#       If any managed key differs, the script REFUSES.
+#       /home/<user>/.bashrc with eight env exports that set Opus 5.5 (1M
+#       context) and Extra-high effort for the main session and all subagents,
+#       the 128K output ceiling, and opt-outs for error reporting, feedback
+#       surveys, and `/feedback` transcript uploads. Marker text is fixed and
+#       the block is verified byte-for-byte on re-run.
+#   (d) settings.json: merge sixteen managed keys (eight top-level, one under
+#       permissions, seven under env) into /home/<user>/.claude/settings.json
+#       for Opus 5.5 (1M context), Extra-high effort, full autonomy
+#       (permissions.defaultMode = "bypassPermissions",
+#       skipDangerousModePermissionPrompt = true, switchModelsOnFlag = false),
+#       and privacy/UI preferences (feedbackDrafts = "off",
+#       feedbackSurveyRate = 0, spinnerTipsEnabled = false, plus env opt-outs).
+#       Pre-existing user-set keys are preserved. If any managed key differs,
+#       the script REFUSES.
 #   (e) CLAUDE.md: create /home/<user>/.claude/CLAUDE.md with the adaptive-
 #       thinking nudge text. If the file already exists with different
 #       content, the script REFUSES.
@@ -124,14 +133,30 @@ CLAUDE_BIN="$LOCAL_BIN/claude"
 #       that adaptive thinking + the answer have room to breathe (they
 #       share this budget).
 #
+#   DISABLE_ERROR_REPORTING=1
+#       Opt out of sending Claude Code internal error messages and stack
+#       traces to Anthropic's third-party error tracking service (otherwise
+#       enabled by default on Pro/Max plans since v2.1.198). Unlike
+#       DISABLE_TELEMETRY or CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, this
+#       does NOT disable GrowthBook feature-flag evaluation (preserving
+#       Remote Control, synced skills/plugins, advisor, and idle compaction).
+#
+#   CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
+#       Disable the "How is Claude doing this session?" survey and its
+#       follow-up transcript-share prompt without disabling feature flags.
+#
+#   DISABLE_FEEDBACK_COMMAND=1
+#       Disable `/feedback`, `/bug`, `/share`, and Claude-drafted feedback
+#       uploads (which otherwise upload transcripts to GCS for 5 years).
+#
 # Marker convention: a fixed begin/end pair so the block can be located,
 # verified, or removed deterministically across re-runs.
 #
-# PREVIOUS_BLOCK, and PREVIOUS / PREVIOUS_ENV in settings_merge, are exactly
-# what the previous revision of this script wrote (claude-opus-5-5, without
-# the 1M suffix, at xhigh effort). Those values, and only those, are upgraded
-# in place -- the .bashrc block as a whole, settings.json key by key; any other
-# difference from the current values is a hand edit and is refused.
+# PREVIOUS_BLOCK / OLDER_BLOCK, and PREVIOUS / PREVIOUS_ENV in settings_merge,
+# are exactly what the preceding revisions of this script wrote. Those values,
+# and only those, are upgraded in place -- the .bashrc block as a whole,
+# settings.json key by key; any other difference from the current values is a
+# hand edit and is refused.
 
 MARKER_BEGIN='# >>> claude code config (managed by 00_install_claude_code.sh) >>>'
 MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
@@ -148,10 +173,28 @@ export ANTHROPIC_MODEL='claude-opus-5-5[1m]'
 export CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5[1m]'
 export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
+export DISABLE_ERROR_REPORTING=1
+export CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
+export DISABLE_FEEDBACK_COMMAND=1
 $MARKER_END
 EOF
 
 read -r -d '' PREVIOUS_BLOCK <<EOF || true
+$MARKER_BEGIN
+# Lock in Extra-high thinking effort for Opus 5.5 (1M context).
+# DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
+# will refuse to run if anything inside the markers has been changed.
+# To customize, delete the entire block (markers and all), edit the script
+# to match what you want, then re-run.
+export CLAUDE_CODE_EFFORT_LEVEL=xhigh
+export ANTHROPIC_MODEL='claude-opus-5-5[1m]'
+export CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5[1m]'
+export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
+$MARKER_END
+EOF
+
+read -r -d '' OLDER_BLOCK <<EOF || true
 $MARKER_BEGIN
 # Lock in Extra-high thinking effort for Opus 5.5 (1M context).
 # DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
@@ -199,24 +242,24 @@ bashrc_block_state() {
     ' "$BASHRC")"
     if [ "$existing" = "$EXPECTED_BLOCK" ]; then
         echo current
-    elif [ "$existing" = "$PREVIOUS_BLOCK" ]; then
+    elif [ "$existing" = "$PREVIOUS_BLOCK" ] || [ "$existing" = "$OLDER_BLOCK" ]; then
         echo previous
     else
         die "$(printf 'FATAL: existing Claude Code env block in %s does not match expected content.\nRefusing to overwrite. To proceed:\n  1. Open %s in an editor.\n  2. Delete the entire block (lines from "%s"\n     through "%s" inclusive).\n  3. Re-run this script.' "$BASHRC" "$BASHRC" "$MARKER_BEGIN" "$MARKER_END")"
     fi
 }
 
-# Replaces the previous revision's block with EXPECTED_BLOCK, keeping every
+# Replaces a previous revision's block with EXPECTED_BLOCK, keeping every
 # other byte of .bashrc. The new file is written beside the real one (through a
 # symlink, if .bashrc is one), keeps its mode, and is renamed over it.
 replace_previous_block() {
-    python3 - "$BASHRC" "$MARKER_BEGIN" "$MARKER_END" "$PREVIOUS_BLOCK" "$EXPECTED_BLOCK" <<'PYEOF'
+    python3 - "$BASHRC" "$MARKER_BEGIN" "$MARKER_END" "$PREVIOUS_BLOCK" "$OLDER_BLOCK" "$EXPECTED_BLOCK" <<'PYEOF'
 import os
 import sys
 import tempfile
 
 path = os.path.realpath(sys.argv[1])
-begin, end, previous, expected = (s.encode("utf-8") for s in sys.argv[2:6])
+begin, end, previous, older, expected = (s.encode("utf-8") for s in sys.argv[2:7])
 
 with open(path, "rb") as f:
     lines = f.read().splitlines(keepends=True)
@@ -227,8 +270,9 @@ if len(begins) != 1 or len(ends) != 1 or ends[0] < begins[0]:
     sys.exit(f"[fatal] {path}: cannot locate exactly one Claude Code env block")
 b, e = begins[0], ends[0]
 newline = b"\n" if lines[e].endswith(b"\n") else b""
-if b"".join(lines[b:e + 1]) != previous + newline:
-    sys.exit(f"[fatal] {path}: the Claude Code env block is not the previous revision's block; refusing to replace it")
+existing = b"".join(lines[b:e + 1])
+if existing not in (previous + newline, older + newline):
+    sys.exit(f"[fatal] {path}: the Claude Code env block is not a previous revision's block; refusing to replace it")
 
 text = b"".join(lines[:b]) + expected + newline + b"".join(lines[e + 1:])
 mode = os.stat(path).st_mode & 0o7777
@@ -264,14 +308,25 @@ WANT = {
     "model": "claude-opus-5-5[1m]",
     "effortLevel": "xhigh",
     "showThinkingSummaries": True,
+    "skipDangerousModePermissionPrompt": True,
+    "switchModelsOnFlag": False,
+    "feedbackDrafts": "off",
+    "feedbackSurveyRate": 0,
+    "spinnerTipsEnabled": False,
+}
+WANT_PERMISSIONS = {
+    "defaultMode": "bypassPermissions",
 }
 WANT_ENV = {
     "CLAUDE_CODE_EFFORT_LEVEL": "xhigh",
     "CLAUDE_CODE_SUBAGENT_MODEL": "claude-opus-5-5[1m]",
     "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+    "DISABLE_ERROR_REPORTING": "1",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
+    "DISABLE_FEEDBACK_COMMAND": "1",
 }
-# Exactly what the previous revision of this script managed.
+# Values from the earlier claude-opus-5-5 (non-[1m]) revision of this script.
 PREVIOUS = {
     "model": "claude-opus-5-5",
     "effortLevel": "xhigh",
@@ -310,6 +365,9 @@ if os.path.lexists(src):
         fail(f"[fatal] {src} is not valid JSON: {e}")
 if not isinstance(data, dict):
     fail(f"[fatal] {src} is not a JSON object (top-level must be {{...}})")
+permissions = data.get("permissions", {})
+if not isinstance(permissions, dict):
+    fail(f"[fatal] {src} has 'permissions' but it is not a JSON object (got {type(permissions).__name__})")
 env = data.get("env", {})
 if not isinstance(env, dict):
     fail(f"[fatal] {src} has 'env' but it is not a JSON object (got {type(env).__name__})")
@@ -324,6 +382,9 @@ def previous_value(have, previous, key):
 conflicts = [f"  {k}: have {data[k]!r}, want {v!r}"
              for k, v in WANT.items()
              if k in data and not same(data[k], v) and not previous_value(data, PREVIOUS, k)]
+conflicts += [f"  permissions.{k}: have {permissions[k]!r}, want {v!r}"
+              for k, v in WANT_PERMISSIONS.items()
+              if k in permissions and not same(permissions[k], v)]
 conflicts += [f"  env.{k}: have {env[k]!r}, want {v!r}"
               for k, v in WANT_ENV.items()
               if k in env and not same(env[k], v) and not previous_value(env, PREVIOUS_ENV, k)]
@@ -333,7 +394,7 @@ if conflicts:
          "Refusing to overwrite. To proceed: open the file by hand,",
          "either change the values to the wanted ones or delete the",
          "conflicting keys, then re-run this script.")
-if holds(data, WANT) and holds(env, WANT_ENV):
+if holds(data, WANT) and holds(permissions, WANT_PERMISSIONS) and holds(env, WANT_ENV):
     state = "current"
 elif (any(previous_value(data, PREVIOUS, k) and not same(data[k], v) for k, v in WANT.items())
         or any(previous_value(env, PREVIOUS_ENV, k) and not same(env[k], v) for k, v in WANT_ENV.items())):
@@ -344,6 +405,8 @@ else:
 print(state)
 if mode == "write":
     data.update(WANT)
+    permissions.update(WANT_PERMISSIONS)
+    data["permissions"] = permissions
     env.update(WANT_ENV)
     data["env"] = env
     with open(sys.argv[3], "w") as f:
@@ -475,22 +538,32 @@ esac
 #     effortLevel            = "xhigh"          (also applies to older models)
 #     showThinkingSummaries  = true             (Opus 5.5 thinks by default;
 #                                                show a summary of that thinking)
+#     skipDangerousModePermissionPrompt = true  (skip bypass-permissions confirmation)
+#     switchModelsOnFlag     = false            (never auto-switch to fallback model)
+#     feedbackDrafts         = "off"            (disable SendFeedback tool / transcript drafts)
+#     feedbackSurveyRate     = 0                (disable session quality surveys)
+#     spinnerTipsEnabled     = false            (disable spinner tips)
+#
+# Managed keys (under permissions):
+#     permissions.defaultMode = "bypassPermissions"
 #
 # Managed keys (under env): duplicates of the bashrc exports, so any
 # launch path that doesn't source .bashrc (GNOME/KDE desktop launchers,
-# IDE-integrated terminals) still gets Extra-high effort.
-#     env.CLAUDE_CODE_EFFORT_LEVEL    = "xhigh"
-#     env.CLAUDE_CODE_SUBAGENT_MODEL = "claude-opus-5-5[1m]"
+# IDE-integrated terminals) still gets Extra-high effort and privacy settings.
+#     env.CLAUDE_CODE_EFFORT_LEVEL         = "xhigh"
+#     env.CLAUDE_CODE_SUBAGENT_MODEL       = "claude-opus-5-5[1m]"
 #     env.CLAUDE_CODE_SUBAGENT_MODEL_FORCE = "1"
-#     env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = "128000"
+#     env.CLAUDE_CODE_MAX_OUTPUT_TOKENS    = "128000"
+#     env.DISABLE_ERROR_REPORTING          = "1"
+#     env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY = "1"
+#     env.DISABLE_FEEDBACK_COMMAND         = "1"
 #
 # Behavior on re-run: each managed key is checked individually. If absent
 # we set it; if present with the right value we leave it alone; if
 # present with the previous revision's value we upgrade it; if present
 # with any other value the script aborts with a precise diagnostic (see
-# settings_merge). Unmanaged keys (yours: theme,
-# skipDangerousModePermissionPrompt, anything else you've added) are
-# preserved untouched.
+# settings_merge). Unmanaged keys (yours: theme, tui, enabledPlugins,
+# anything else you've added) are preserved untouched.
 
 section "(d) merge managed keys into $SETTINGS"
 

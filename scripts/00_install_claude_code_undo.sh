@@ -7,17 +7,21 @@
 #   (e) ~/.claude/CLAUDE.md: deletes the file ONLY IF it exists with the
 #       exact byte content the install script writes (335 bytes, ending in
 #       'patterns.\n').
-#   (d) ~/.claude/settings.json: removes the seven managed keys (three top-
-#       level: model, effortLevel, showThinkingSummaries; four under env:
-#       CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_SUBAGENT_MODEL,
-#       CLAUDE_CODE_SUBAGENT_MODEL_FORCE, CLAUDE_CODE_MAX_OUTPUT_TOKENS). Refuses
-#       if ANY managed key is missing, or has a value other than the
+#   (d) ~/.claude/settings.json: removes the sixteen managed keys (eight top-
+#       level: model, effortLevel, showThinkingSummaries,
+#       skipDangerousModePermissionPrompt, switchModelsOnFlag,
+#       feedbackDrafts, feedbackSurveyRate, spinnerTipsEnabled; one under
+#       permissions: defaultMode; seven under env: CLAUDE_CODE_EFFORT_LEVEL,
+#       CLAUDE_CODE_SUBAGENT_MODEL, CLAUDE_CODE_SUBAGENT_MODEL_FORCE,
+#       CLAUDE_CODE_MAX_OUTPUT_TOKENS, DISABLE_ERROR_REPORTING,
+#       CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY, DISABLE_FEEDBACK_COMMAND).
+#       Refuses if ANY managed key is missing, or has a value other than the
 #       install script's WANT. Unmanaged keys you have added (e.g. theme,
-#       skipDangerousModePermissionPrompt) are preserved untouched. If the
-#       env block becomes empty after removal, the env key itself is also
-#       removed.
+#       tui, enabledPlugins) are preserved untouched. If the permissions or
+#       env block becomes empty after removal, that subtree key itself is
+#       also removed.
 #   (c) ~/.bashrc marker-bracketed env block: removes the exact byte
-#       sequence (leading newline + 12-line block + trailing newline) the
+#       sequence (leading newline + 15-line block + trailing newline) the
 #       install script appended. Refuses unless that byte sequence appears
 #       EXACTLY ONCE in the file.
 #   (b) ~/.bashrc PATH addition: removes the exact 3-newline / 2-line
@@ -157,6 +161,9 @@ export ANTHROPIC_MODEL='$MODEL'
 export CLAUDE_CODE_SUBAGENT_MODEL='$MODEL'
 export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
 export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
+export DISABLE_ERROR_REPORTING=1
+export CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
+export DISABLE_FEEDBACK_COMMAND=1
 $MARKER_END
 EOF
 
@@ -210,18 +217,33 @@ STEP_B_APPEND = (
     'export PATH="$HOME/.local/bin:$PATH"\n'
 )
 
-# Same WANT/WANT_ENV constants as the install script. MODEL is the only
-# one that varies per install-script version; the other six are stable.
+def same(a, b):
+    return type(a) is type(b) and a == b
+
+# Same WANT/WANT_PERMISSIONS/WANT_ENV constants as the install script.
+# MODEL is the only one that varies per install-script version; the other
+# fourteen are stable.
 WANT = {
-    "model":                 MODEL,
-    "effortLevel":           "xhigh",
-    "showThinkingSummaries": True,
+    "model":                             MODEL,
+    "effortLevel":                       "xhigh",
+    "showThinkingSummaries":             True,
+    "skipDangerousModePermissionPrompt": True,
+    "switchModelsOnFlag":                False,
+    "feedbackDrafts":                    "off",
+    "feedbackSurveyRate":                0,
+    "spinnerTipsEnabled":                False,
+}
+WANT_PERMISSIONS = {
+    "defaultMode": "bypassPermissions",
 }
 WANT_ENV = {
-    "CLAUDE_CODE_EFFORT_LEVEL":      "xhigh",
-    "CLAUDE_CODE_SUBAGENT_MODEL":    MODEL,
-    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE": "1",
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+    "CLAUDE_CODE_EFFORT_LEVEL":           "xhigh",
+    "CLAUDE_CODE_SUBAGENT_MODEL":         MODEL,
+    "CLAUDE_CODE_SUBAGENT_MODEL_FORCE":   "1",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS":      "128000",
+    "DISABLE_ERROR_REPORTING":            "1",
+    "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
+    "DISABLE_FEEDBACK_COMMAND":           "1",
 }
 
 # ---------------------------------------------------------------------------
@@ -239,7 +261,7 @@ n_c = bashrc_text.count(STEP_C_APPEND)
 if n_c != 1:
     problems.append(
         f"(c) ~/.bashrc: install script's marker-block append "
-        f"(leading-LF + 12-line block + trailing-LF, {len(STEP_C_APPEND)} bytes, "
+        f"(leading-LF + 15-line block + trailing-LF, {len(STEP_C_APPEND)} bytes, "
         f"derived for MODEL={MODEL!r}) must appear EXACTLY ONCE; found {n_c}. "
         f"Possible causes: the block was hand-edited; the block was installed "
         f"by a different model version (try passing that model as $1); the "
@@ -258,8 +280,9 @@ if n_b > 1:
     )
 
 # (d) settings.json: must exist, parse as a JSON object, contain every
-# managed key (top-level and env.*) with EXACTLY the install script's WANT
-# value. ALSO refuses if env is missing entirely (install always sets it).
+# managed key (top-level, permissions.*, and env.*) with EXACTLY the install
+# script's WANT value. ALSO refuses if permissions or env is missing entirely
+# (install always sets them).
 settings_data = None
 if not os.path.isfile(SETTINGS):
     problems.append(
@@ -278,16 +301,36 @@ else:
         for k, want_v in WANT.items():
             if k not in settings_data:
                 problems.append(f"(d) {SETTINGS}: managed key {k!r} is missing")
-            elif settings_data[k] != want_v:
+            elif not same(settings_data[k], want_v):
                 problems.append(
                     f"(d) {SETTINGS}: managed key {k!r} has value "
                     f"{settings_data[k]!r}, expected {want_v!r}"
                 )
+        permissions = settings_data.get("permissions")
+        if permissions is None:
+            problems.append(
+                f"(d) {SETTINGS}: permissions block is missing entirely "
+                f"(install script always creates permissions with defaultMode)"
+            )
+        elif not isinstance(permissions, dict):
+            problems.append(
+                f"(d) {SETTINGS}: permissions exists but is not a JSON object "
+                f"(got {type(permissions).__name__})"
+            )
+        else:
+            for k, want_v in WANT_PERMISSIONS.items():
+                if k not in permissions:
+                    problems.append(f"(d) {SETTINGS}: permissions.{k} is missing")
+                elif not same(permissions[k], want_v):
+                    problems.append(
+                        f"(d) {SETTINGS}: permissions.{k} has value "
+                        f"{permissions[k]!r}, expected {want_v!r}"
+                    )
         env = settings_data.get("env")
         if env is None:
             problems.append(
                 f"(d) {SETTINGS}: env block is missing entirely "
-                f"(install script always creates env with four managed keys)"
+                f"(install script always creates env with seven managed keys)"
             )
         elif not isinstance(env, dict):
             problems.append(
@@ -298,7 +341,7 @@ else:
             for k, want_v in WANT_ENV.items():
                 if k not in env:
                     problems.append(f"(d) {SETTINGS}: env.{k} is missing")
-                elif env[k] != want_v:
+                elif not same(env[k], want_v):
                     problems.append(
                         f"(d) {SETTINGS}: env.{k} has value "
                         f"{env[k]!r}, expected {want_v!r}"
@@ -336,7 +379,7 @@ if problems:
 print("[info] Phase 1: all preconditions verified.")
 print(f"[info]   (c) ~/.bashrc: marker block present exactly once ({len(STEP_C_APPEND)} bytes)")
 print(f"[info]   (b) ~/.bashrc: PATH addition present: {'yes' if n_b == 1 else 'no (install skipped step b)'}")
-print(f"[info]   (d) {SETTINGS}: all 7 managed keys match install WANT")
+print(f"[info]   (d) {SETTINGS}: all 16 managed keys match install WANT")
 print(f"[info]   (e) {CLAUDEMD}: byte-for-byte match ({len(claudemd_text)} bytes)")
 
 # ---------------------------------------------------------------------------
@@ -369,12 +412,17 @@ def atomic_write(path, content):
 os.unlink(CLAUDEMD)
 print(f"[info]   (e) deleted {CLAUDEMD}")
 
-# (d) settings.json — strip the seven managed keys. Preserves insertion
+# (d) settings.json — strip the sixteen managed keys. Preserves insertion
 # order of unmanaged keys (Python 3.7+ dict preserves insertion order, and
-# pop() does not reorder remaining items). Drops the env subtree only if
-# it becomes empty after removing all WANT_ENV keys.
+# pop() does not reorder remaining items). Drops the permissions / env
+# subtrees only if they become empty after removing managed keys.
 for k in WANT:
     settings_data.pop(k, None)
+permissions_block = settings_data.get("permissions", {})
+for k in WANT_PERMISSIONS:
+    permissions_block.pop(k, None)
+if not permissions_block:
+    settings_data.pop("permissions", None)
 env_block = settings_data.get("env", {})
 for k in WANT_ENV:
     env_block.pop(k, None)
@@ -387,7 +435,7 @@ new_settings_text = json.dumps(settings_data, indent=2, sort_keys=False) + "\n"
 json.loads(new_settings_text)
 atomic_write(SETTINGS, new_settings_text)
 remaining_keys = list(settings_data.keys())
-print(f"[info]   (d) stripped 7 managed keys from {SETTINGS};"
+print(f"[info]   (d) stripped 16 managed keys from {SETTINGS};"
       f" remaining unmanaged keys: {remaining_keys or '(none)'}")
 
 # (c)+(b) ~/.bashrc — remove the marker block append, and (if present)
@@ -420,6 +468,10 @@ with open(SETTINGS, encoding='utf-8') as f:
 for k in WANT:
     if k in after:
         sys.exit(f"[fatal] post-state: managed key {k!r} still present in {SETTINGS}")
+if "permissions" in after:
+    for k in WANT_PERMISSIONS:
+        if k in after["permissions"]:
+            sys.exit(f"[fatal] post-state: permissions.{k} still present in {SETTINGS}")
 if "env" in after:
     for k in WANT_ENV:
         if k in after["env"]:

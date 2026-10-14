@@ -144,8 +144,8 @@ Reference: [`scripts/00_install_claude_code.sh`](./scripts/00_install_claude_cod
 
 1. Install or update via Anthropic's official binary installer at `https://claude.ai/install.sh` — lands the binary at `/home/<user>/.local/bin/claude` and verifies Claude Code 2.1.280 or later, as required for Opus 5.5.
 2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` (skipped if any existing `export PATH=` line already references `.local/bin`).
-3. Append a marker-bracketed env block to `/home/<user>/.bashrc` (or replace the previous revision's block in place) with five exports: Opus 5.5 with 1M context (`claude-opus-5-5[1m]`) for the main session and all subagents, Extra-high (`xhigh`) effort, and the 128K output ceiling. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
-4. Merge seven managed keys into `/home/<user>/.claude/settings.json` (upgrading the previous revision's values) — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, and four matching env settings for effort, subagent model, forced subagent model, and output ceiling. Pre-existing keys you have added are preserved untouched.
+3. Append a marker-bracketed env block to `/home/<user>/.bashrc` (or replace the previous revision's block in place) with eight exports: Opus 5.5 with 1M context (`claude-opus-5-5[1m]`) for the main session and all subagents, Extra-high (`xhigh`) effort, the 128K output ceiling, and the privacy/anti-nag toggles (`DISABLE_ERROR_REPORTING=1`, `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1`, `DISABLE_FEEDBACK_COMMAND=1`). `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
+4. Merge sixteen managed keys into `/home/<user>/.claude/settings.json` (upgrading the previous revision's values) — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, `permissions.defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`, `switchModelsOnFlag: false`, `feedbackDrafts: "off"`, `feedbackSurveyRate: 0`, `spinnerTipsEnabled: false`, and seven matching `env` settings for effort, subagent model, forced subagent model, output ceiling, and error-reporting / feedback suppression. Pre-existing keys you have added are preserved untouched.
 5. Create `/home/<user>/.claude/CLAUDE.md` with a one-paragraph adaptive-thinking nudge — Opus 5.5 always uses adaptive reasoning, so a `CLAUDE.md` note biases the per-turn adaptive trigger upward.
 
 ### Why Extra-high effort is set in multiple places
@@ -172,6 +172,8 @@ Every managed item is checked before anything changes, the binary update include
 
 After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude` to authenticate on first launch, and verify Extra-high effort with the `/effort` slash command — should show `xhigh` in the slider.
 
+To remove the installer-owned configuration later, run `bash scripts/00_install_claude_code_undo.sh 'claude-opus-5-5[1m]'` as the desktop user. It preserves the `~/.local/bin/claude` binary, project history, skills, memory, and unmanaged `settings.json` keys.
+
 ---
 
 ## 3a. Install OpenAI Codex CLI
@@ -195,6 +197,27 @@ There are no profiles, model aliases, fallback models, config merges, stale mode
 After it finishes, open a NEW shell (or `source ~/.bashrc`), run `codex`, and verify the active model and execution policy with `/status`.
 
 To remove the installer-owned configuration later, run `bash scripts/00_install_codex_cli_undo.sh` as the desktop user. It preserves Codex's appended runtime tables, including project trust and MCP server settings.
+
+---
+
+## 3b. Install Google Antigravity CLI
+
+Google Antigravity CLI (`agy`) is installed and configured with the same high-autonomy, high-reasoning defaults as Claude Code and Codex.
+
+```bash
+bash scripts/00_install_antigravity_cli.sh        # run as the desktop user, NOT sudo
+```
+
+Reference: [`scripts/00_install_antigravity_cli.sh`](./scripts/00_install_antigravity_cli.sh). Four sub-steps (after a preflight check of all managed state):
+
+1. Install via Google's official bootstrapper at `https://antigravity.google/cli/install.sh` when `/home/<user>/.local/bin/agy` is absent (fetches the platform release manifest, verifies the SHA-512 digest, and installs the binary), or update in place via `agy update` when already installed, verifying Antigravity CLI `1.3.5` or later.
+2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` via `agy install`.
+3. Merge the seven persistent managed keys into `/home/<user>/.gemini/antigravity-cli/settings.json` — `model: "Gemini 4 Argon (High)"` (`gemini-4-argon-high`), `verbosity: "high"`, `toolPermission: "always-proceed"`, `artifactReviewPolicy: "always-proceed"`, `allowNonWorkspaceAccess: true`, `showFeedbackSurvey: false`, and `showTips: false` — plus `"enableTelemetry": false` (which `agy` pushes to the account backend on startup via `syncTelemetryFromServer` and then strips via `MarshalSparse()`), while verifying that `enableTerminalSandbox` and `useG1Credits` are not enabled. Pre-existing unmanaged keys (such as `trustedWorkspaces`) are preserved untouched.
+4. Create `/home/<user>/.gemini/config/AGENTS.md` with the same multi-step reasoning prompt used for `CLAUDE.md` (loaded by `agy` as `<RULE[user_global]>`).
+
+Every managed item is checked before anything changes, so a conflict on any managed key, `AGENTS.md`, or `.bashrc` PATH block causes a loud refusal without modifying disk state.
+
+To remove the installer-owned configuration later, run `bash scripts/00_install_antigravity_cli_undo.sh` as the desktop user. It preserves the `~/.local/bin/agy` binary, authentication, conversations, `~/.gemini/config/rules/`, and unmanaged `settings.json` keys such as `trustedWorkspaces`.
 
 ---
 
@@ -559,6 +582,7 @@ The box is now on the public internet — it became reachable the moment it clai
 │   │   ├── common.sh                          # shared helpers; sourced by all numbered scripts
 │   │   └── versions.sh                        # pinned versions of every package/asset (see §0a)
 │   ├── 00_install_claude_code.sh              # §3
+│   ├── 00_install_antigravity_cli.sh          # §3b
 │   ├── 01_validate_xorg_session.sh            # §4
 │   ├── 02_configure_gdm_xorg.sh               # §5
 │   ├── 03_disable_avahi.sh                    # §6
