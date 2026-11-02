@@ -620,7 +620,7 @@ Every step was published to Git before and after it ran, with root holding no Gi
 
 **The result.** On 2026-11-02 at 13:14 the reference server came up on `7.0.0-43-generic` as its only kernel, through stock GRUB, with the fix confirmed in live kernel memory and no failed units. It is a pre-release build with test-key signatures. When it reaches `noble-updates`, `sudo apt-get install --reinstall linux-image-7.0.0-43-generic` replaces them. Later Ubuntu kernels arrive normally, and DKMS rebuilds NVIDIA for each. Don't enable Secure Boot without enrolling the DKMS signing key.
 
-**The record.** The investigation, the tested upgrade process and the full audit trail are in [BigBIueWhale/cte-cve-2026-98432-audit](https://github.com/BigBIueWhale/cte-cve-2026-98432-audit). To run it, see [`kernel-upgrade/PROCEDURE.md`](https://github.com/BigBIueWhale/cte-cve-2026-98432-audit/blob/main/kernel-upgrade/PROCEDURE.md).
+**The record.** The analysis of the bug and the tested upgrade process are public in [BigBIueWhale/cve-2026-98432-kernel-upgrade](https://github.com/BigBIueWhale/cve-2026-98432-kernel-upgrade). To run it, see [`kernel-upgrade/PROCEDURE.md`](https://github.com/BigBIueWhale/cve-2026-98432-kernel-upgrade/blob/main/kernel-upgrade/PROCEDURE.md). The reference server's own evidence stays private.
 
 **What changed here.** This gate now exists because provisioning used to finish without ever checking the kernel, so a new machine would have looked complete while vulnerable. Run [§9](#9-nvidia-driver-and-kernel-module) on a machine like this one, reboot, and this gate tells you whether the kernel is safe before [§18](#18-static-ip) puts it online.
 

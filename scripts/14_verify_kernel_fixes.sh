@@ -16,7 +16,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
 
-UPGRADE_REPOSITORY=https://github.com/BigBIueWhale/cte-cve-2026-98432-audit
+UPGRADE_REPOSITORY=https://github.com/BigBIueWhale/cve-2026-98432-kernel-upgrade
 
 main() {
     require_root
