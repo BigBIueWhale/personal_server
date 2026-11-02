@@ -6,7 +6,7 @@ Every numbered section has a corresponding script under [`scripts/`](./scripts/)
 
 This guide is intentionally **Xorg-only**. Wayland is not supported. See [§0](#0-why-xorg-only).
 
-Every package and downloaded asset is **pinned to an exact version** in [`scripts/lib/versions.sh`](./scripts/lib/versions.sh) — with one deliberate exception, the NVIDIA driver, which is branch-pinned because its kernel module is Canonical's prebuilt signed module and tracks the HWE kernel (see [§0a](#0a-version-pinning)). Same input → same output. To upgrade a component, edit one line there.
+Every package and downloaded asset is **pinned to an exact version** in [`scripts/lib/versions.sh`](./scripts/lib/versions.sh) — with one deliberate exception, the NVIDIA driver, which is branch-pinned so its DKMS source and userspace track the same driver point release (see [§0a](#0a-version-pinning)). Same input → same output. To upgrade a component, edit one line there.
 
 ---
 
@@ -54,7 +54,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 
 | Component | Pin |
 |---|---|
-| NVIDIA driver (branch-pinned) | `nvidia-driver-595-open` (branch 595) + Canonical's prebuilt signed `linux-modules-nvidia-595-open-generic-hwe-24.04`; point release tracks the HWE kernel |
+| NVIDIA driver (branch-pinned) | `nvidia-driver-595-open` + `nvidia-dkms-595-open` (branch 595); one DKMS provider, rebuilt for HWE kernels by the standard package hooks |
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
 | Docker CE + plugins | Engine/CLI `29.8.1`; containerd `2.3.5`; Buildx `0.37.1`; Compose `5.5.1` (exact Docker noble package revisions in `versions.sh`) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.20.1-1` (and matching libs) |
@@ -72,7 +72,11 @@ To upgrade a component:
 3. Re-run [`network_security/verify_network_security.py`](./network_security/verify_network_security.py) to confirm posture is unchanged.
 4. Commit.
 
-NVIDIA is the one stack pinned to a **branch** rather than a frozen point version. Its kernel module is Canonical's prebuilt, signed `linux-modules-nvidia-595-open-generic-hwe-24.04`, versioned to the HWE kernel ABI and rebuilt against the current 595 point release for each new kernel; the userspace `nvidia-driver` / `nvidia-utils` packages therefore track that same point release through `noble-updates`. Freezing them to an exact version would desync userspace from the kernel-coupled module and break `nvidia-smi` on the next kernel bump. Automatic updates keep that coupling only if `unattended-upgrades` can install the module along with the kernel: by default it takes just `noble-security`, where new HWE kernels and their modules land, but a new module can require a driver point release that only `noble-updates` carries. [§9](#9-nvidia-driver-and-kernel-module) therefore lets it take `noble-updates` `restricted` and `multiverse` as well. The branch is overridable via the `DRIVER_BRANCH` env var (e.g., `sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh`).
+NVIDIA is pinned to a **branch**, rather than a frozen point version. `nvidia-driver-595-open`, `nvidia-dkms-595-open` and the userspace utilities must have matching point releases. The standard DKMS kernel/header hooks rebuild that source for each new kernel. On a driver update, DKMS always rebuilds the running and newest kernels; the CUDA repository's dkms 3.4 also rebuilds every other kernel with headers, while Ubuntu's dkms does not. No per-ABI NVIDIA module package holds an old userspace release in place.
+
+This deliberately replaces the earlier prebuilt-provider scheme. On the reference server, an old `linux-modules-nvidia-595-open-7.0.0-34-generic` package required the old driver point release. Unattended upgrades would not remove it, so newer HWE kernels arrived without an NVIDIA module. A single DKMS provider removes that dependency lock. Mixing DKMS and prebuilt providers previously caused a different failure; script 06 removes the competing provider explicitly.
+
+The script adds no APT repository, repository key, pin or hold. Its one update-policy file is the long-standing `/etc/apt/apt.conf.d/51unattended-upgrades-nvidia`, which lets `unattended-upgrades` take the NVIDIA stack from `noble-updates` `restricted` and `multiverse`, because some driver releases never reach `noble-security`. A driver update can still require a reboot to replace the currently loaded module; `--check` reports that condition. The branch remains overridable with `DRIVER_BRANCH`.
 
 ---
 
@@ -121,7 +125,7 @@ Boot from the USB stick. In the live-image session before installation:
    - **Wi-Fi and Bluetooth firmware blobs** that are not in `main`.
    - **Restricted media codecs** (MP3, AAC, H.264 userland) for desktop usability.
 
-   The third-party checkbox installs the driver **and** Canonical's prebuilt signed kernel module (`linux-modules-nvidia-595-open-generic-hwe-24.04`) — that signed module is what carries the driver across kernel upgrades, with no local rebuild or signing key, provided the module is installed together with each new kernel (see [§9](#9-nvidia-driver-and-kernel-module)). You'll still run [§9](#9-nvidia-driver-and-kernel-module) afterwards to assert the pinned branch and add the explicit `nvidia-utils` package.
+   The third-party checkbox may initially select Canonical's prebuilt module provider. Run [§9](#9-nvidia-driver-and-kernel-module) afterwards to establish this repository's single DKMS provider and verify matching modules. Do not keep both providers.
 
 After install completes and the box reboots:
 
@@ -291,19 +295,32 @@ It also pins the listener to **IPv4 only** via a `ssh.socket` drop-in, because t
 
 ```bash
 sudo bash scripts/06_install_nvidia_driver.sh
-# or, if Canonical has shipped a newer branch in noble multiverse-updates:
-sudo DRIVER_BRANCH=600 bash scripts/06_install_nvidia_driver.sh
+# Read-only verification after an update/reboot:
+sudo bash scripts/06_install_nvidia_driver.sh --check
 ```
 
-Reference: [`scripts/06_install_nvidia_driver.sh`](./scripts/06_install_nvidia_driver.sh). Installs three packages on the chosen branch (default 595):
+Reference: [`scripts/06_install_nvidia_driver.sh`](./scripts/06_install_nvidia_driver.sh). The single module provider is `nvidia-dkms-${BRANCH}-open`, with `nvidia-driver-${BRANCH}-open` and `nvidia-utils-${BRANCH}` on the same point release. The default branch is 595. Standard kernel/header package hooks rebuild the driver for future HWE kernels; this does not require adding an APT source or changing update policy.
 
-- `nvidia-driver-${BRANCH}-open` — the proprietary driver in its open-kernel-module variant.
-- `linux-modules-nvidia-${BRANCH}-open-generic-hwe-24.04` — Canonical's prebuilt, signed kernel module, versioned to the HWE kernel ABI. Naming it explicitly makes apt satisfy the driver's module-provider dependency with this prebuilt module (and pulls the matching per-kernel `linux-modules-nvidia-${BRANCH}-open-<kver>` alongside every new HWE kernel, so the module survives kernel upgrades with no local rebuild or signing key). **The "Install third-party software" checkbox installs this too; §9 just asserts the pinned branch and adds the utils package.**
-- `nvidia-utils-${BRANCH}` — userspace utils including `nvidia-smi`.
+The script installs its own build prerequisites and matching headers, because this step precedes the later developer-toolchain and optional CUDA steps. It removes competing prebuilt NVIDIA module packages and other DKMS branches in the same explicit transaction. It fails if `dpkg` has unfinished packages. It requires matching headers, a registered DKMS module, correct vermagic and the expected driver version on the running and newest kernels, and warns about older ones. It also checks that the running module matches the installed version and that `nvidia-smi` works. A new installed driver cannot replace an already loaded module automatically; a reported mismatch requires a reboot.
 
-The script also writes `/etc/apt/apt.conf.d/51unattended-upgrades-nvidia`, which lets `unattended-upgrades` install from `noble-updates` `restricted` and `multiverse` (the rest of `noble-updates` stays manual). Without it, `unattended-upgrades` installs a new HWE kernel from `noble-security` but keeps its module back whenever the module requires a driver point release that only `noble-updates` has, and the next boot comes up with no NVIDIA driver. That happened with kernel `7.0.0-34`, whose module requires driver `595.91.07`.
+`dkms status` is the provider check. Generated files under `/lib/modules/.../updates/dkms/` are not owned as payload files by a per-ABI `linux-modules-nvidia-*` package, so `dpkg -S` is not the ownership test for this mode. During a kernel upgrade trial the script refuses install mode, because headers for every kernel would give the protected fallback a driver. `--check` stays available.
 
-The script then runs `nvidia-smi` and confirms the loaded `nvidia` module resolves (via `dpkg -S`) to a `linux-modules-nvidia-${BRANCH}-open-*` package — i.e. the prebuilt signed module is the active provider for the running kernel. No per-kernel compile or local module-signing is involved; the module you run is the one Canonical built and signed. Finally it fails if any installed kernel lacks its `linux-modules-nvidia-${BRANCH}-open-<kver>` package, since GRUB boots the newest kernel whether or not the driver can load on it. Re-run it after a kernel update to check before rebooting.
+Secure Boot is disabled on the reference machine. Enabling it later requires enrolling the DKMS module-signing key before relying on the local modules. An older kernel without a module still boots, without the GPU.
+
+### If a DKMS build fails
+
+A failed build leaves `linux-image` or `nvidia-dkms` half-configured. That is the one failure this provider adds, and it also stops `unattended-upgrades`, so every later update waits until it is repaired. GRUB is not updated for the affected kernel, because the DKMS hook runs first, so the machine keeps booting the previous one.
+
+```bash
+sudo dpkg --audit                                        # shows what is unfinished
+ls /var/lib/dkms/nvidia/                                 # the driver versions present
+less /var/lib/dkms/nvidia/<version>/build/make.log       # why the build failed
+# Fix the cause, usually a newer driver from noble-updates, then:
+sudo dpkg --configure -a
+sudo bash scripts/06_install_nvidia_driver.sh --check
+```
+
+Never respond by installing a `linux-modules-nvidia-*` package. Mixing providers causes this same wedge.
 
 ---
 

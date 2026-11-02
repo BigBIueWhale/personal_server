@@ -16,20 +16,12 @@
 # The .deb SHA-256 values were computed at the time of original install:
 #   sha256sum ~/Downloads/teamviewer_amd64.deb
 
-# -- NVIDIA proprietary driver (open kernel module variant) --------------------
-# The kernel module is Canonical's prebuilt, signed
-# linux-modules-nvidia-${BRANCH}-open-generic-hwe-24.04 package. It is versioned
-# to the HWE kernel ABI (not the driver), built and signed by Canonical against
-# each new HWE kernel, and shipped through noble-updates — so it loads under
-# Secure Boot with no local signing key and follows the HWE kernel on every
-# kernel upgrade, provided unattended-upgrades may install it (scripts/06 lets it
-# take noble-updates restricted and multiverse for that). Because that signed module is rebuilt against the
-# current 595 point release for each kernel, the userspace nvidia-driver /
-# nvidia-utils packages must track the same point release. NVIDIA is therefore
-# pinned to a BRANCH, not a frozen point version: freezing userspace would
-# desync it from the kernel-coupled module and break nvidia-smi on the next
-# kernel bump. (This is the one stack that floats within its pin — everything
-# else in this file is an exact-version pin.)
+# -- NVIDIA driver (open kernel module, single DKMS provider) -----------------
+# The source and userspace stay on one point release within this branch.
+# Standard kernel/header hooks rebuild it for later HWE kernels. Do not install
+# per-ABI linux-modules-nvidia packages alongside nvidia-dkms-${BRANCH}-open.
+# scripts/06 supplies its own compiler and headers, and verifies the running and
+# newest kernels. It adds no APT source, repository key, pin or hold.
 NVIDIA_DRIVER_BRANCH=595
 
 # -- CUDA Toolkit (host) -------------------------------------------------------
