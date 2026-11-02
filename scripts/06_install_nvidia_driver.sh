@@ -27,7 +27,7 @@ DRIVER_PKG="nvidia-driver-${DRIVER_BRANCH}-open"
 DKMS_PKG="nvidia-dkms-${DRIVER_BRANCH}-open"
 UTILS_PKG="nvidia-utils-${DRIVER_BRANCH}"
 HEADERS_META=linux-headers-generic-hwe-24.04
-TRIAL_MARKER=/etc/default/grub.d/99-cte-kernel-upgrade.cfg
+TRIAL_MARKER=/etc/default/grub.d/99-kernel-upgrade.cfg
 
 # Anything dpkg still tracks counts as present. A half-configured package is what
 # a failed DKMS build leaves behind, so it must not be filtered out here.
