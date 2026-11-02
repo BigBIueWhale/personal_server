@@ -60,6 +60,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.20.1-1` (and matching libs) |
 | TeamViewer | `15.81.5` (version-specific dl.teamviewer.com URL + SHA-256) |
 | OpenAI Codex CLI | `0.159.0` standalone release; default model `gpt-6.1-sol` |
+| Linux kernel | Not pinned: Ubuntu's HWE line, through `linux-generic-hwe-24.04`. [§20](#20-kernel-security-gate) proves from the running kernel's own code that it is safe to expose |
 
 Install scripts source this file via `load_versions` (in [`scripts/lib/common.sh`](./scripts/lib/common.sh)) and pass the pins straight into `apt-get install -y package=version`. Downloads are SHA-256-verified against the same pins. The Docker installer refuses an installed component newer than its tested pin with an explicit stale-pin error; it never silently downgrades a newer host to make the file agree with reality.
 
@@ -396,7 +397,7 @@ into a VM; kernel patching and the container controls below remain necessary.
 
 Default seccomp, AppArmor, dropped capabilities, and the absence of privileged mode remain important layers, but they are not substitutes for a patched host kernel. Before intentionally publishing a container service on this DMZ host:
 
-- apply available Ubuntu kernel security updates, reboot, and verify the **running** kernel with `uname -r`;
+- apply available Ubuntu kernel security updates, reboot, and pass the [kernel security gate](#20-kernel-security-gate), which checks the **running** kernel;
 - retain Docker's default seccomp and AppArmor confinement, run the application as a non-root user, drop every unnecessary capability, and use `no-new-privileges` where compatible;
 - do not mount `/var/run/docker.sock`, host devices, or broad host directories into the container;
 - treat every writable bind mount as data the compromised container can alter, and expose only the specific port that is intentionally public; and
@@ -553,6 +554,8 @@ Reference: [`network_security/remote_port_tester.py`](./network_security/remote_
 
 Everything up to here hardened the box while it sat on a DHCP lease — present on the LAN, but unreachable from the internet. This step is deliberately last, because the router's DMZ forwards every inbound connection to one fixed IP, so **the moment this box claims that IP it is live on the public internet.** Doing it now — after the hardening steps and the local audit in [§17](#17-network-security-verification) — means the box is already locked down the instant it is exposed, not part-way through setup.
 
+**Pass the [kernel security gate](#20-kernel-security-gate) first.** This script runs the same check, and refuses to take the address on an unfixed kernel. A second box on the LAN that is not the DMZ target can skip it with `ALLOW_UNFIXED_KERNEL=1`. Never do that on the DMZ target.
+
 Set a static IPv4 on the Ethernet interface, then disable Wi-Fi so the box lives on the wire:
 
 ```bash
@@ -580,6 +583,49 @@ The box is now on the public internet — it became reachable the moment it clai
 
 ---
 
+## 20. Kernel security gate
+
+```bash
+sudo bash scripts/14_verify_kernel_fixes.sh
+```
+
+Run this after the last reboot in [§16](#16-disable-ipv6), before [§18](#18-static-ip), and again after any kernel update. [`scripts/13_set_static_ip.sh`](./scripts/13_set_static_ip.sh) runs the same check and refuses to put an unfixed kernel on the internet.
+
+Reference: [`scripts/14_verify_kernel_fixes.sh`](./scripts/14_verify_kernel_fixes.sh). It reads the machine code of the running kernel from live memory, and of every other installed kernel from its image, because a version number only says what a package claims. It fails if the running kernel or the kernel GRUB boots next lacks a known fix, and it warns about older kernels, which boot only if chosen by hand. Something it can't read counts as not fixed. Known fixes are listed in [`scripts/lib/kernel_fix_check.py`](./scripts/lib/kernel_fix_check.py).
+
+If it fails, take the normal route first:
+
+```bash
+sudo apt-get update
+sudo apt-get install --only-upgrade linux-generic-hwe-24.04
+sudo systemctl reboot
+```
+
+If that brings no fixed kernel, Ubuntu hasn't published one yet. Use the emergency upgrade below, which needs a fork or other copy you can push to, because it publishes its audit trail as it runs.
+
+### Emergency upgrade, 2026-11-02: CVE-2026-98432
+
+**The bug.** [CVE-2026-98432](https://kernel.googlesource.com/pub/scm/linux/security/vulns/+/refs/heads/master/cve/published/2026/CVE-2026-98432.mbox) is a use-after-free in the kernel's IPv4 TCP code. `inet_sock_destruct` and `tcp_v4_reqsk_destructor` freed a socket's IP options straight away, instead of after an RCU grace period. On 2026-11-01 a remote-root exploit was reported against a Multipath TCP listener. The underlying bug doesn't need Multipath TCP, and this repository deliberately puts a machine on the public internet ([§19](#19-router-dmz-configuration)), so it was treated as an emergency. No attack on the reference server was seen or demonstrated.
+
+**Why normal updates weren't enough.** The reference server ran `7.0.0-38`, and `7.0.0-42`, the newest kernel in `noble-updates`, lacked the fix too. Canonical's fixed `7.0.0-43.43~24.04.1` existed only in its kernel team's staging archive, so waiting wasn't acceptable and rebooting into `-42` would have fixed nothing.
+
+**What was done.** Canonical's own `-43` was installed from local `.deb` files, each verified against the staging archive's signed index. No APT source, key, pin or hold was added. NVIDIA moved to the single DKMS provider in [§9](#9-nvidia-driver-and-kernel-module) at the same time, because `-43` has no module from the old prebuilt provider. The server has no remote console, so nothing was trusted until it had booted:
+
+1. A boot on a kernel known to work proved that GRUB can write to this disk, so a one-time boot really is one time.
+2. A one-time trial of `-43` read the fix from live kernel memory and checked the GPU, network, SSH, Docker and desktop. A panic would have returned to the known-good kernel by itself.
+3. Stock GRUB was restored, and every other kernel was removed.
+4. A final reboot through stock GRUB proved that end state.
+
+Every step was published to Git before and after it ran, with root holding no Git credentials.
+
+**The result.** On 2026-11-02 at 13:14 the reference server came up on `7.0.0-43-generic` as its only kernel, through stock GRUB, with the fix confirmed in live kernel memory and no failed units. It is a pre-release build with test-key signatures. When it reaches `noble-updates`, `sudo apt-get install --reinstall linux-image-7.0.0-43-generic` replaces them. Later Ubuntu kernels arrive normally, and DKMS rebuilds NVIDIA for each. Don't enable Secure Boot without enrolling the DKMS signing key.
+
+**The record.** The investigation, the tested upgrade process and the full audit trail are in [BigBIueWhale/cte-cve-2026-98432-audit](https://github.com/BigBIueWhale/cte-cve-2026-98432-audit). To run it, see [`kernel-upgrade/PROCEDURE.md`](https://github.com/BigBIueWhale/cte-cve-2026-98432-audit/blob/main/kernel-upgrade/PROCEDURE.md).
+
+**What changed here.** This gate now exists because provisioning used to finish without ever checking the kernel, so a new machine would have looked complete while vulnerable. Run [§9](#9-nvidia-driver-and-kernel-module) on a machine like this one, reboot, and this gate tells you whether the kernel is safe before [§18](#18-static-ip) puts it online.
+
+---
+
 ## Companion documents
 
 - [`network_security/README.md`](./network_security/README.md) — detailed network-security posture (SSH-only inbound surface), the targeted-iptables approach over a blanket firewall, and the VMware-port-blocking script (`apply_vmware_firewall.py`) for hosts that *do* run VMware.
@@ -597,6 +643,7 @@ The box is now on the public internet — it became reachable the moment it clai
 ├── scripts/
 │   ├── lib/
 │   │   ├── common.sh                          # shared helpers; sourced by all numbered scripts
+│   │   ├── kernel_fix_check.py                # reads fixes from kernel machine code (see §20)
 │   │   └── versions.sh                        # pinned versions of every package/asset (see §0a)
 │   ├── 00_install_claude_code.sh              # §3
 │   ├── 00_install_antigravity_cli.sh          # §3b
@@ -612,7 +659,8 @@ The box is now on the public internet — it became reachable the moment it clai
 │   ├── 10_install_teamviewer.sh               # §13
 │   ├── 11_install_developer_toolchain.sh      # §14
 │   ├── 12_disable_ipv6.sh                      # §16
-│   └── 13_set_static_ip.sh                    # §18
+│   ├── 13_set_static_ip.sh                    # §18
+│   └── 14_verify_kernel_fixes.sh              # §20, run before §18
 ├── network_security/                          # §17, audit and verify tools
 │   ├── README.md
 │   ├── verify_network_security.py

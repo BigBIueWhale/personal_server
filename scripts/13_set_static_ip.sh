@@ -238,6 +238,18 @@ require_command systemctl
 # 1.2 Distribution: Ubuntu noble (matches the rest of this repo).
 require_ubuntu_noble
 
+# The moment this box claims the DMZ's address it is on the public internet, so
+# this is where a vulnerable kernel has to stop. See README section 20. A second
+# box on the LAN that is not the DMZ target may skip it, on purpose and out loud.
+if [[ "${ALLOW_UNFIXED_KERNEL:-0}" == 1 ]]; then
+    warn 'ALLOW_UNFIXED_KERNEL=1 skips the kernel gate. Never use this on the DMZ target.'
+else
+    require_command python3
+    require_command zstd
+    python3 -I -B "$SCRIPT_DIR/lib/kernel_fix_check.py" \
+        || die 'this kernel is not safe to expose: run scripts/14_verify_kernel_fixes.sh, and see README section 20'
+fi
+
 # 1.3 NetworkManager active.
 require_systemd_active NetworkManager
 

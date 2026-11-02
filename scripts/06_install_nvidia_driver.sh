@@ -164,8 +164,8 @@ main() {
         verify_gpu
         return
     fi
-    # During a kernel trial the fallback must stay driver-free. Installing headers
-    # for every kernel here would give it a module.
+    # A kernel upgrade decides which kernels get a module until it finishes, and
+    # installing headers for every kernel here would change that under it.
     [[ ! -e "$TRIAL_MARKER" ]] || die "a kernel upgrade trial is in progress ($TRIAL_MARKER); use --check only"
 
     configure_unattended_upgrades
