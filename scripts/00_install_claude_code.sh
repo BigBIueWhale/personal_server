@@ -22,18 +22,22 @@
 #       .bashrc (so subsequent terminal sessions can run `claude`). Skipped
 #       if any `export PATH=…` line already references `.local/bin`.
 #   (c) bashrc env block: append a marker-delimited block to
-#       /home/<user>/.bashrc with eight env exports that set Opus 5.5 (1M
+#       /home/<user>/.bashrc with nine env exports that set Opus 5.5 (1M
 #       context) and Extra-high effort for the main session and all subagents,
 #       the 128K output ceiling, and opt-outs for error reporting, feedback
-#       surveys, and `/feedback` transcript uploads. Marker text is fixed and
-#       the block is verified byte-for-byte on re-run.
-#   (d) settings.json: merge sixteen managed keys (eight top-level, one under
-#       permissions, seven under env) into /home/<user>/.claude/settings.json
-#       for Opus 5.5 (1M context), Extra-high effort, full autonomy
-#       (permissions.defaultMode = "bypassPermissions",
-#       skipDangerousModePermissionPrompt = true, switchModelsOnFlag = false),
-#       and privacy/UI preferences (feedbackDrafts = "off",
-#       feedbackSurveyRate = 0, spinnerTipsEnabled = false, plus env opt-outs).
+#       surveys, `/feedback` transcript uploads, and memory sync to the
+#       account. Marker text is fixed and the block is verified byte-for-byte
+#       on re-run.
+#   (d) settings.json: merge twenty-four managed keys (fifteen top-level, one
+#       under permissions, eight under env) into
+#       /home/<user>/.claude/settings.json for Opus 5.5 (1M context),
+#       Extra-high effort, full autonomy (permissions.defaultMode =
+#       "bypassPermissions", skipDangerousModePermissionPrompt = true,
+#       switchModelsOnFlag = false), privacy/UI preferences (feedbackDrafts =
+#       "off", feedbackSurveyRate = 0, spinnerTipsEnabled = false, plus env
+#       opt-outs), and account isolation: nothing from this machine is
+#       mirrored to or stored in the claude.ai account, and nothing from the
+#       account is pushed onto this machine (see ACCOUNT ISOLATION below).
 #       Pre-existing user-set keys are preserved. If any managed key differs,
 #       the script REFUSES.
 #   (e) CLAUDE.md: create /home/<user>/.claude/CLAUDE.md with the adaptive-
@@ -149,14 +153,60 @@ CLAUDE_BIN="$LOCAL_BIN/claude"
 #       Disable `/feedback`, `/bug`, `/share`, and Claude-drafted feedback
 #       uploads (which otherwise upload transcripts to GCS for 5 years).
 #
+#   CLAUDE_CODE_DISABLE_ORG_MEMORY=1
+#       Keep auto-memory on this machine only. Claude Code 2.1.317 can sync
+#       the memory directory with "memory stores" held in the claude.ai
+#       account (personal and team), which then appear on every machine
+#       signed in to that account. The sync is rolled out server-side
+#       (feature flag `tengu_haze_glass`) and allowed by the organisation's
+#       `allow_memory_sync` policy, so it can switch on without any local
+#       change; this variable is the client's own off switch, checked before
+#       either of them. Local auto-memory keeps working.
+#
+# ACCOUNT ISOLATION (the settings.json keys added in this revision)
+# -----------------------------------------------------------------
+# Threat model: someone who takes over the claude.ai account, from anywhere,
+# without touching this machine. They should find nothing of this machine's
+# work in the account, and be unable to run anything here through it. Every
+# key below is read from user settings by Claude Code 2.1.317 (descriptions
+# quoted from its settings schema):
+#
+#   autoUploadSessions = false
+#       "Mirror local sessions to claude.ai as view-only". Off: transcripts
+#       stay in ~/.claude/projects on this disk.
+#   remoteControlAtStartup = false, disableRemoteControl = true
+#       Remote Control relays a live session through claude.ai/code and lets
+#       the account drive it. Sessions here run with bypassPermissions, so an
+#       account takeover would mean running commands on this machine.
+#       Disabling it also blocks `claude remote-control`, `--rc` and the
+#       in-session toggle.
+#   syncClaudeAiSkills = false, syncClaudeAiPlugins = false
+#       Skills and plugins enabled on claude.ai are downloaded into every
+#       signed-in Claude Code; a plugin can carry hooks and MCP servers that
+#       run here. Off: nothing more is downloaded, and previously synced ones
+#       are moved to ~/.claude/{skills,plugins}/.trash at the next launch.
+#   disableClaudeAiConnectors = true
+#       claude.ai MCP connectors (mail, drive, documents and any custom
+#       remote MCP server added to the account) are not fetched or connected
+#       here, so the account cannot add tools to these sessions, and session
+#       content is not sent to those services.
+#   enableArtifact = false
+#       The Artifact tool publishes pages to the claude.ai account (private,
+#       but stored there). Off: Claude cannot put work from this machine into
+#       the account.
+#
+# These are client settings. claude.ai's own settings (model training,
+# memory from chats, past-chat search) are separate and are set in the
+# account itself.
+#
 # Marker convention: a fixed begin/end pair so the block can be located,
 # verified, or removed deterministically across re-runs.
 #
-# PREVIOUS_BLOCK / OLDER_BLOCK, and PREVIOUS / PREVIOUS_ENV in settings_merge,
-# are exactly what the preceding revisions of this script wrote. Those values,
-# and only those, are upgraded in place -- the .bashrc block as a whole,
-# settings.json key by key; any other difference from the current values is a
-# hand edit and is refused.
+# PREVIOUS_BLOCKS, and PREVIOUS / PREVIOUS_ENV in settings_merge, are exactly
+# what the preceding revisions of this script wrote. Those values, and only
+# those, are upgraded in place -- the .bashrc block as a whole, settings.json
+# key by key; any other difference from the current values is a hand edit and
+# is refused.
 
 MARKER_BEGIN='# >>> claude code config (managed by 00_install_claude_code.sh) >>>'
 MARKER_END='# <<< claude code config (managed by 00_install_claude_code.sh) <<<'
@@ -176,10 +226,30 @@ export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 export DISABLE_ERROR_REPORTING=1
 export CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
 export DISABLE_FEEDBACK_COMMAND=1
+export CLAUDE_CODE_DISABLE_ORG_MEMORY=1
 $MARKER_END
 EOF
 
-read -r -d '' PREVIOUS_BLOCK <<EOF || true
+# The blocks earlier revisions wrote, newest first.
+read -r -d '' PREVIOUS_BLOCK_1 <<EOF || true
+$MARKER_BEGIN
+# Lock in Extra-high thinking effort for Opus 5.5 (1M context).
+# DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
+# will refuse to run if anything inside the markers has been changed.
+# To customize, delete the entire block (markers and all), edit the script
+# to match what you want, then re-run.
+export CLAUDE_CODE_EFFORT_LEVEL=xhigh
+export ANTHROPIC_MODEL='claude-opus-5-5[1m]'
+export CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5[1m]'
+export CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1
+export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
+export DISABLE_ERROR_REPORTING=1
+export CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
+export DISABLE_FEEDBACK_COMMAND=1
+$MARKER_END
+EOF
+
+read -r -d '' PREVIOUS_BLOCK_2 <<EOF || true
 $MARKER_BEGIN
 # Lock in Extra-high thinking effort for Opus 5.5 (1M context).
 # DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
@@ -194,7 +264,7 @@ export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 $MARKER_END
 EOF
 
-read -r -d '' OLDER_BLOCK <<EOF || true
+read -r -d '' PREVIOUS_BLOCK_3 <<EOF || true
 $MARKER_BEGIN
 # Lock in Extra-high thinking effort for Opus 5.5 (1M context).
 # DO NOT EDIT lines inside this block by hand — 00_install_claude_code.sh
@@ -242,7 +312,8 @@ bashrc_block_state() {
     ' "$BASHRC")"
     if [ "$existing" = "$EXPECTED_BLOCK" ]; then
         echo current
-    elif [ "$existing" = "$PREVIOUS_BLOCK" ] || [ "$existing" = "$OLDER_BLOCK" ]; then
+    elif [ "$existing" = "$PREVIOUS_BLOCK_1" ] || [ "$existing" = "$PREVIOUS_BLOCK_2" ] \
+            || [ "$existing" = "$PREVIOUS_BLOCK_3" ]; then
         echo previous
     else
         die "$(printf 'FATAL: existing Claude Code env block in %s does not match expected content.\nRefusing to overwrite. To proceed:\n  1. Open %s in an editor.\n  2. Delete the entire block (lines from "%s"\n     through "%s" inclusive).\n  3. Re-run this script.' "$BASHRC" "$BASHRC" "$MARKER_BEGIN" "$MARKER_END")"
@@ -253,13 +324,15 @@ bashrc_block_state() {
 # other byte of .bashrc. The new file is written beside the real one (through a
 # symlink, if .bashrc is one), keeps its mode, and is renamed over it.
 replace_previous_block() {
-    python3 - "$BASHRC" "$MARKER_BEGIN" "$MARKER_END" "$PREVIOUS_BLOCK" "$OLDER_BLOCK" "$EXPECTED_BLOCK" <<'PYEOF'
+    python3 - "$BASHRC" "$MARKER_BEGIN" "$MARKER_END" "$EXPECTED_BLOCK" \
+        "$PREVIOUS_BLOCK_1" "$PREVIOUS_BLOCK_2" "$PREVIOUS_BLOCK_3" <<'PYEOF'
 import os
 import sys
 import tempfile
 
 path = os.path.realpath(sys.argv[1])
-begin, end, previous, older, expected = (s.encode("utf-8") for s in sys.argv[2:7])
+begin, end, expected = (s.encode("utf-8") for s in sys.argv[2:5])
+previous_blocks = [s.encode("utf-8") for s in sys.argv[5:]]
 
 with open(path, "rb") as f:
     lines = f.read().splitlines(keepends=True)
@@ -271,7 +344,7 @@ if len(begins) != 1 or len(ends) != 1 or ends[0] < begins[0]:
 b, e = begins[0], ends[0]
 newline = b"\n" if lines[e].endswith(b"\n") else b""
 existing = b"".join(lines[b:e + 1])
-if existing not in (previous + newline, older + newline):
+if existing not in [block + newline for block in previous_blocks]:
     sys.exit(f"[fatal] {path}: the Claude Code env block is not a previous revision's block; refusing to replace it")
 
 text = b"".join(lines[:b]) + expected + newline + b"".join(lines[e + 1:])
@@ -313,6 +386,14 @@ WANT = {
     "feedbackDrafts": "off",
     "feedbackSurveyRate": 0,
     "spinnerTipsEnabled": False,
+    # Account isolation (see ACCOUNT ISOLATION in the header).
+    "autoUploadSessions": False,
+    "remoteControlAtStartup": False,
+    "disableRemoteControl": True,
+    "syncClaudeAiSkills": False,
+    "syncClaudeAiPlugins": False,
+    "disableClaudeAiConnectors": True,
+    "enableArtifact": False,
 }
 WANT_PERMISSIONS = {
     "defaultMode": "bypassPermissions",
@@ -325,6 +406,7 @@ WANT_ENV = {
     "DISABLE_ERROR_REPORTING": "1",
     "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
     "DISABLE_FEEDBACK_COMMAND": "1",
+    "CLAUDE_CODE_DISABLE_ORG_MEMORY": "1",
 }
 # Values from the earlier claude-opus-5-5 (non-[1m]) revision of this script.
 PREVIOUS = {
@@ -543,6 +625,13 @@ esac
 #     feedbackDrafts         = "off"            (disable SendFeedback tool / transcript drafts)
 #     feedbackSurveyRate     = 0                (disable session quality surveys)
 #     spinnerTipsEnabled     = false            (disable spinner tips)
+#     autoUploadSessions     = false            (no session mirror on claude.ai)
+#     remoteControlAtStartup = false            (no Remote Control bridge at start)
+#     disableRemoteControl   = true             (no Remote Control at all)
+#     syncClaudeAiSkills     = false            (no skills pushed from the account)
+#     syncClaudeAiPlugins    = false            (no plugins pushed from the account)
+#     disableClaudeAiConnectors = true          (no claude.ai MCP connectors)
+#     enableArtifact         = false            (no pages published to the account)
 #
 # Managed keys (under permissions):
 #     permissions.defaultMode = "bypassPermissions"
@@ -557,6 +646,7 @@ esac
 #     env.DISABLE_ERROR_REPORTING          = "1"
 #     env.CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY = "1"
 #     env.DISABLE_FEEDBACK_COMMAND         = "1"
+#     env.CLAUDE_CODE_DISABLE_ORG_MEMORY   = "1"
 #
 # Behavior on re-run: each managed key is checked individually. If absent
 # we set it; if present with the right value we leave it alone; if

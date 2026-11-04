@@ -149,8 +149,8 @@ Reference: [`scripts/00_install_claude_code.sh`](./scripts/00_install_claude_cod
 
 1. Install or update via Anthropic's official binary installer at `https://claude.ai/install.sh` — lands the binary at `/home/<user>/.local/bin/claude` and verifies Claude Code 2.1.280 or later, as required for Opus 5.5.
 2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` (skipped if any existing `export PATH=` line already references `.local/bin`).
-3. Append a marker-bracketed env block to `/home/<user>/.bashrc` (or replace the previous revision's block in place) with eight exports: Opus 5.5 with 1M context (`claude-opus-5-5[1m]`) for the main session and all subagents, Extra-high (`xhigh`) effort, the 128K output ceiling, and the privacy/anti-nag toggles (`DISABLE_ERROR_REPORTING=1`, `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1`, `DISABLE_FEEDBACK_COMMAND=1`). `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
-4. Merge sixteen managed keys into `/home/<user>/.claude/settings.json` (upgrading the previous revision's values) — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, `permissions.defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`, `switchModelsOnFlag: false`, `feedbackDrafts: "off"`, `feedbackSurveyRate: 0`, `spinnerTipsEnabled: false`, and seven matching `env` settings for effort, subagent model, forced subagent model, output ceiling, and error-reporting / feedback suppression. Pre-existing keys you have added are preserved untouched.
+3. Append a marker-bracketed env block to `/home/<user>/.bashrc` (or replace a previous revision's block in place) with nine exports: Opus 5.5 with 1M context (`claude-opus-5-5[1m]`) for the main session and all subagents, Extra-high (`xhigh`) effort, the 128K output ceiling, and the privacy/anti-nag toggles (`DISABLE_ERROR_REPORTING=1`, `CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1`, `DISABLE_FEEDBACK_COMMAND=1`, `CLAUDE_CODE_DISABLE_ORG_MEMORY=1`). `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` includes built-in Explore and Plan agents.
+4. Merge twenty-four managed keys into `/home/<user>/.claude/settings.json` (upgrading the previous revision's values) — `model`, `effortLevel: "xhigh"`, `showThinkingSummaries: true`, `permissions.defaultMode: "bypassPermissions"`, `skipDangerousModePermissionPrompt: true`, `switchModelsOnFlag: false`, `feedbackDrafts: "off"`, `feedbackSurveyRate: 0`, `spinnerTipsEnabled: false`, the seven account-isolation keys [below](#what-stays-out-of-the-claudeai-account), and eight matching `env` settings for effort, subagent model, forced subagent model, output ceiling, error-reporting / feedback suppression and memory sync. Pre-existing keys you have added are preserved untouched.
 5. Create `/home/<user>/.claude/CLAUDE.md` with a one-paragraph adaptive-thinking nudge — Opus 5.5 always uses adaptive reasoning, so a `CLAUDE.md` note biases the per-turn adaptive trigger upward.
 
 ### Why Extra-high effort is set in multiple places
@@ -163,6 +163,23 @@ keeps the saved effort value consistent where Claude Code applies it:
 - `~/.claude/settings.json` `effortLevel: "xhigh"` — keeps the same default on older models. Anthropic says this top-level user setting does not apply to Opus 5.5, which defaults to `medium`; the environment setting above is what selects Extra-high for Opus 5.5.
 
 `CLAUDE_CODE_SUBAGENT_MODEL='claude-opus-5-5[1m]'` together with `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` makes the model apply even when an agent definition requests something else. Subagents inherit the session's thinking configuration, and the `CLAUDE_CODE_EFFORT_LEVEL=xhigh` environment value takes precedence over subagent-specific effort settings.
+
+### What stays out of the claude.ai account
+
+The threat here is someone who takes over the claude.ai account from anywhere, without touching this machine. They should find none of this machine's sessions or memory in the account, and be unable to run anything here through it. Sessions on this box run with `bypassPermissions`, so anything the account can push or drive would run unchecked.
+
+| Setting | Effect |
+|---|---|
+| `autoUploadSessions: false` | Sessions are not mirrored to claude.ai. Transcripts stay in `~/.claude/projects` on this disk. |
+| `remoteControlAtStartup: false`, `disableRemoteControl: true` | No Remote Control: no session is relayed through claude.ai/code or driven from it. `claude remote-control`, `--rc` and the in-session toggle are refused. |
+| `CLAUDE_CODE_DISABLE_ORG_MEMORY=1` | Auto-memory stays local. Claude Code can sync the memory directory with personal and team memory stores in the account, shared by every machine signed in to it. That sync is switched on server-side, so the client's own off switch is set. |
+| `syncClaudeAiSkills: false`, `syncClaudeAiPlugins: false` | Skills and plugins enabled on claude.ai are not downloaded here. A plugin can carry hooks and MCP servers that run on this machine. |
+| `disableClaudeAiConnectors: true` | claude.ai's MCP connectors, including any custom remote server added to the account, are not connected here. |
+| `enableArtifact: false` | Claude can't publish pages from this machine to the account. |
+
+All seven were checked against Claude Code 2.1.317's own settings schema and code. They change only what the client does. The account's own switches (model training, memory from chats, past-chat search) are set on claude.ai.
+
+`DISABLE_TELEMETRY` and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` stay unset, as before: they also turn off server-side feature flags, and the second blocks plugin and GitHub traffic the CLI needs.
 
 ### Idempotency and refuse-on-tamper guarantees
 
@@ -193,7 +210,7 @@ Reference: [`scripts/00_install_codex_cli.sh`](./scripts/00_install_codex_cli.sh
 
 1. Installs or upgrades the standalone Codex CLI to `CODEX_CLI_VERSION` from [`scripts/lib/versions.sh`](./scripts/lib/versions.sh) using OpenAI's installer at `https://chatgpt.com/codex/install.sh --release`.
 2. Adds one exact `/home/<user>/.local/bin` PATH block to `/home/<user>/.bashrc`, refusing duplicate Codex blocks or upstream Codex installer blocks.
-3. Replaces only explicit known config states with one exact managed `/home/<user>/.codex/config.toml` containing `model = "gpt-6.1-sol"`, `model_provider = "openai"`, `model_reasoning_effort = "xhigh"`, `plan_mode_reasoning_effort = "xhigh"`, `approval_policy = "never"`, and `sandbox_mode = "danger-full-access"`. The tables Codex writes for itself while running — `[projects.*]` trust levels, `[tui.*]`, `[notice]`, `[mcp_servers.*]` — are recognised as Codex's own state, preserved verbatim, and carried across a migration; they are never rewritten and never merged into the managed block.
+3. Replaces only explicit known config states with one exact managed `/home/<user>/.codex/config.toml` containing `model = "gpt-6.1-sol"`, `model_provider = "openai"`, `model_reasoning_effort = "xhigh"`, `plan_mode_reasoning_effort = "xhigh"`, `approval_policy = "never"`, and `sandbox_mode = "danger-full-access"`, plus the privacy settings: no prompt history on disk (`[history] persistence = "none"`), analytics and feedback off, no update check at startup, and a `[shell_environment_policy]` that keeps keys, secrets and tokens out of the commands Codex runs. The tables Codex writes for itself while running — `[projects.*]` trust levels, `[tui.*]`, `[notice]`, `[mcp_servers.*]` — are recognised as Codex's own state, preserved verbatim, and carried across a migration; they are never rewritten and never merged into the managed block.
 4. Deletes `/home/<user>/.codex/models_cache.json` when it was written by a Codex client other than the pinned one, and prunes any non-pinned standalone Codex release directory after the pinned release is installed.
 5. Refuses while stale **host** Codex processes from an old standalone or npm install are still running, because those processes can recreate old model-cache state after the files are cleaned. Linux processes visible through host `/proc` but running in descendant/container PID namespaces are excluded before command-line or executable reconnaissance; the installer never signals processes, and release/cache cleanup remains confined to exact paths under the host user's managed `~/.codex`.
 

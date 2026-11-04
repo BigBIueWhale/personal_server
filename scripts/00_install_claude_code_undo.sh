@@ -7,21 +7,26 @@
 #   (e) ~/.claude/CLAUDE.md: deletes the file ONLY IF it exists with the
 #       exact byte content the install script writes (335 bytes, ending in
 #       'patterns.\n').
-#   (d) ~/.claude/settings.json: removes the sixteen managed keys (eight top-
-#       level: model, effortLevel, showThinkingSummaries,
+#   (d) ~/.claude/settings.json: removes the twenty-four managed keys
+#       (fifteen top-level: model, effortLevel, showThinkingSummaries,
 #       skipDangerousModePermissionPrompt, switchModelsOnFlag,
-#       feedbackDrafts, feedbackSurveyRate, spinnerTipsEnabled; one under
-#       permissions: defaultMode; seven under env: CLAUDE_CODE_EFFORT_LEVEL,
-#       CLAUDE_CODE_SUBAGENT_MODEL, CLAUDE_CODE_SUBAGENT_MODEL_FORCE,
-#       CLAUDE_CODE_MAX_OUTPUT_TOKENS, DISABLE_ERROR_REPORTING,
-#       CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY, DISABLE_FEEDBACK_COMMAND).
+#       feedbackDrafts, feedbackSurveyRate, spinnerTipsEnabled,
+#       autoUploadSessions, remoteControlAtStartup, disableRemoteControl,
+#       syncClaudeAiSkills, syncClaudeAiPlugins, disableClaudeAiConnectors,
+#       enableArtifact; one under permissions: defaultMode; eight under env:
+#       CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_SUBAGENT_MODEL,
+#       CLAUDE_CODE_SUBAGENT_MODEL_FORCE, CLAUDE_CODE_MAX_OUTPUT_TOKENS,
+#       DISABLE_ERROR_REPORTING, CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY,
+#       DISABLE_FEEDBACK_COMMAND, CLAUDE_CODE_DISABLE_ORG_MEMORY). Removing
+#       the account-isolation keys returns those features to Claude Code's
+#       defaults.
 #       Refuses if ANY managed key is missing, or has a value other than the
 #       install script's WANT. Unmanaged keys you have added (e.g. theme,
 #       tui, enabledPlugins) are preserved untouched. If the permissions or
 #       env block becomes empty after removal, that subtree key itself is
 #       also removed.
 #   (c) ~/.bashrc marker-bracketed env block: removes the exact byte
-#       sequence (leading newline + 15-line block + trailing newline) the
+#       sequence (leading newline + 16-line block + trailing newline) the
 #       install script appended. Refuses unless that byte sequence appears
 #       EXACTLY ONCE in the file.
 #   (b) ~/.bashrc PATH addition: removes the exact 3-newline / 2-line
@@ -164,6 +169,7 @@ export CLAUDE_CODE_MAX_OUTPUT_TOKENS=128000
 export DISABLE_ERROR_REPORTING=1
 export CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
 export DISABLE_FEEDBACK_COMMAND=1
+export CLAUDE_CODE_DISABLE_ORG_MEMORY=1
 $MARKER_END
 EOF
 
@@ -232,6 +238,13 @@ WANT = {
     "feedbackDrafts":                    "off",
     "feedbackSurveyRate":                0,
     "spinnerTipsEnabled":                False,
+    "autoUploadSessions":                False,
+    "remoteControlAtStartup":            False,
+    "disableRemoteControl":              True,
+    "syncClaudeAiSkills":                False,
+    "syncClaudeAiPlugins":               False,
+    "disableClaudeAiConnectors":         True,
+    "enableArtifact":                    False,
 }
 WANT_PERMISSIONS = {
     "defaultMode": "bypassPermissions",
@@ -244,6 +257,7 @@ WANT_ENV = {
     "DISABLE_ERROR_REPORTING":            "1",
     "CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY": "1",
     "DISABLE_FEEDBACK_COMMAND":           "1",
+    "CLAUDE_CODE_DISABLE_ORG_MEMORY":     "1",
 }
 
 # ---------------------------------------------------------------------------
@@ -261,7 +275,7 @@ n_c = bashrc_text.count(STEP_C_APPEND)
 if n_c != 1:
     problems.append(
         f"(c) ~/.bashrc: install script's marker-block append "
-        f"(leading-LF + 15-line block + trailing-LF, {len(STEP_C_APPEND)} bytes, "
+        f"(leading-LF + 16-line block + trailing-LF, {len(STEP_C_APPEND)} bytes, "
         f"derived for MODEL={MODEL!r}) must appear EXACTLY ONCE; found {n_c}. "
         f"Possible causes: the block was hand-edited; the block was installed "
         f"by a different model version (try passing that model as $1); the "
@@ -330,7 +344,7 @@ else:
         if env is None:
             problems.append(
                 f"(d) {SETTINGS}: env block is missing entirely "
-                f"(install script always creates env with seven managed keys)"
+                f"(install script always creates env with eight managed keys)"
             )
         elif not isinstance(env, dict):
             problems.append(
@@ -379,7 +393,7 @@ if problems:
 print("[info] Phase 1: all preconditions verified.")
 print(f"[info]   (c) ~/.bashrc: marker block present exactly once ({len(STEP_C_APPEND)} bytes)")
 print(f"[info]   (b) ~/.bashrc: PATH addition present: {'yes' if n_b == 1 else 'no (install skipped step b)'}")
-print(f"[info]   (d) {SETTINGS}: all 16 managed keys match install WANT")
+print(f"[info]   (d) {SETTINGS}: all 24 managed keys match install WANT")
 print(f"[info]   (e) {CLAUDEMD}: byte-for-byte match ({len(claudemd_text)} bytes)")
 
 # ---------------------------------------------------------------------------
@@ -412,7 +426,7 @@ def atomic_write(path, content):
 os.unlink(CLAUDEMD)
 print(f"[info]   (e) deleted {CLAUDEMD}")
 
-# (d) settings.json — strip the sixteen managed keys. Preserves insertion
+# (d) settings.json — strip the twenty-four managed keys. Preserves insertion
 # order of unmanaged keys (Python 3.7+ dict preserves insertion order, and
 # pop() does not reorder remaining items). Drops the permissions / env
 # subtrees only if they become empty after removing managed keys.
@@ -435,7 +449,7 @@ new_settings_text = json.dumps(settings_data, indent=2, sort_keys=False) + "\n"
 json.loads(new_settings_text)
 atomic_write(SETTINGS, new_settings_text)
 remaining_keys = list(settings_data.keys())
-print(f"[info]   (d) stripped 16 managed keys from {SETTINGS};"
+print(f"[info]   (d) stripped 24 managed keys from {SETTINGS};"
       f" remaining unmanaged keys: {remaining_keys or '(none)'}")
 
 # (c)+(b) ~/.bashrc — remove the marker block append, and (if present)
