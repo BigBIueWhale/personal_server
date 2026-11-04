@@ -83,6 +83,9 @@
 #
 # Usage:
 #   bash scripts/00_install_claude_code.sh
+#   CLAUDE_CONFIG_DIR=~/.claude-account2 bash scripts/00_install_claude_code.sh
+#       (another account's config folder: its settings.json and CLAUDE.md;
+#       the .bashrc block and the binary are shared, so they are already current)
 #
 # After it finishes, open a new shell (or `source ~/.bashrc`) so the new
 # env block takes effect, then run `claude` and walk through the
@@ -104,7 +107,14 @@ TARGET_HOME="$HOME"
 BASHRC="$TARGET_HOME/.bashrc"
 [ -f "$BASHRC" ] || die "$BASHRC does not exist — this script edits .bashrc and cannot proceed"
 
-CLAUDE_DIR="$TARGET_HOME/.claude"
+# The config folder: ~/.claude, or the one Claude Code's own CLAUDE_CONFIG_DIR
+# names, for a second account on the same machine. It must sit in this home.
+CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$TARGET_HOME/.claude}"
+CLAUDE_DIR="${CLAUDE_DIR%/}"
+case "$CLAUDE_DIR" in
+    "$TARGET_HOME"/*) ;;
+    *) die "CLAUDE_CONFIG_DIR='$CLAUDE_DIR' is not a folder under $TARGET_HOME — refusing" ;;
+esac
 SETTINGS="$CLAUDE_DIR/settings.json"
 CLAUDEMD="$CLAUDE_DIR/CLAUDE.md"
 LOCAL_BIN="$TARGET_HOME/.local/bin"

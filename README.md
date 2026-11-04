@@ -194,6 +194,8 @@ Every managed item is checked before anything changes, the binary update include
 
 After the script finishes, open a NEW shell (or `source ~/.bashrc`), run `claude` to authenticate on first launch, and verify Extra-high effort with the `/effort` slash command — should show `xhigh` in the slider.
 
+A second Claude account on the same machine keeps its own config folder, named by Claude Code's `CLAUDE_CONFIG_DIR`. Run the installer once more with that variable set, for example `CLAUDE_CONFIG_DIR=~/.claude-account2 bash scripts/00_install_claude_code.sh`, so that folder's `settings.json` and `CLAUDE.md` get the same managed keys. The `.bashrc` block and the binary are shared and already current. The undo script handles `~/.claude` only.
+
 To remove the installer-owned configuration later, run `bash scripts/00_install_claude_code_undo.sh 'claude-opus-5-5[1m]'` as the desktop user. It preserves the `~/.local/bin/claude` binary, project history, skills, memory, and unmanaged `settings.json` keys.
 
 ---
