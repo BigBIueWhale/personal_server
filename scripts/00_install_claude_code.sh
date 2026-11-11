@@ -28,12 +28,13 @@
 #       surveys, `/feedback` transcript uploads, and memory sync to the
 #       account. Marker text is fixed and the block is verified byte-for-byte
 #       on re-run.
-#   (d) settings.json: merge twenty-four managed keys (fifteen top-level, one
+#   (d) settings.json: merge twenty-five managed keys (fifteen top-level, two
 #       under permissions, eight under env) into
 #       /home/<user>/.claude/settings.json for Opus 5.5 (1M context),
 #       Extra-high effort, full autonomy (permissions.defaultMode =
-#       "bypassPermissions", skipDangerousModePermissionPrompt = true,
-#       switchModelsOnFlag = false), privacy/UI preferences (feedbackDrafts =
+#       "bypassPermissions", permissions.denyInsteadOfPrompting = true,
+#       skipDangerousModePermissionPrompt = true, switchModelsOnFlag =
+#       false), privacy/UI preferences (feedbackDrafts =
 #       "off", feedbackSurveyRate = 0, spinnerTipsEnabled = false, plus env
 #       opt-outs), and account isolation: nothing from this machine is
 #       mirrored to or stored in the claude.ai account, and nothing from the
@@ -407,6 +408,7 @@ WANT = {
 }
 WANT_PERMISSIONS = {
     "defaultMode": "bypassPermissions",
+    "denyInsteadOfPrompting": True,
 }
 WANT_ENV = {
     "CLAUDE_CODE_EFFORT_LEVEL": "xhigh",
@@ -645,6 +647,14 @@ esac
 #
 # Managed keys (under permissions):
 #     permissions.defaultMode = "bypassPermissions"
+#     permissions.denyInsteadOfPrompting = true
+#         Even with bypassPermissions, some of Claude Code's own checks still
+#         stop a tool call on an "approve this command?" prompt (e.g. an
+#         `rm -rf` of a path held in a variable). With nobody at the screen,
+#         such a call waited for hours (2026-11-11: six hours, overnight).
+#         With this key the call is refused at once, Claude is told, and the
+#         turn goes on: nothing ever waits for a person. It only refuses;
+#         it never allows anything bypassPermissions would not.
 #
 # Managed keys (under env): duplicates of the bashrc exports, so any
 # launch path that doesn't source .bashrc (GNOME/KDE desktop launchers,

@@ -7,13 +7,14 @@
 #   (e) ~/.claude/CLAUDE.md: deletes the file ONLY IF it exists with the
 #       exact byte content the install script writes (335 bytes, ending in
 #       'patterns.\n').
-#   (d) ~/.claude/settings.json: removes the twenty-four managed keys
+#   (d) ~/.claude/settings.json: removes the twenty-five managed keys
 #       (fifteen top-level: model, effortLevel, showThinkingSummaries,
 #       skipDangerousModePermissionPrompt, switchModelsOnFlag,
 #       feedbackDrafts, feedbackSurveyRate, spinnerTipsEnabled,
 #       autoUploadSessions, remoteControlAtStartup, disableRemoteControl,
 #       syncClaudeAiSkills, syncClaudeAiPlugins, disableClaudeAiConnectors,
-#       enableArtifact; one under permissions: defaultMode; eight under env:
+#       enableArtifact; two under permissions: defaultMode,
+#       denyInsteadOfPrompting; eight under env:
 #       CLAUDE_CODE_EFFORT_LEVEL, CLAUDE_CODE_SUBAGENT_MODEL,
 #       CLAUDE_CODE_SUBAGENT_MODEL_FORCE, CLAUDE_CODE_MAX_OUTPUT_TOKENS,
 #       DISABLE_ERROR_REPORTING, CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY,
@@ -247,7 +248,8 @@ WANT = {
     "enableArtifact":                    False,
 }
 WANT_PERMISSIONS = {
-    "defaultMode": "bypassPermissions",
+    "defaultMode":            "bypassPermissions",
+    "denyInsteadOfPrompting": True,
 }
 WANT_ENV = {
     "CLAUDE_CODE_EFFORT_LEVEL":           "xhigh",
@@ -393,7 +395,7 @@ if problems:
 print("[info] Phase 1: all preconditions verified.")
 print(f"[info]   (c) ~/.bashrc: marker block present exactly once ({len(STEP_C_APPEND)} bytes)")
 print(f"[info]   (b) ~/.bashrc: PATH addition present: {'yes' if n_b == 1 else 'no (install skipped step b)'}")
-print(f"[info]   (d) {SETTINGS}: all 24 managed keys match install WANT")
+print(f"[info]   (d) {SETTINGS}: all 25 managed keys match install WANT")
 print(f"[info]   (e) {CLAUDEMD}: byte-for-byte match ({len(claudemd_text)} bytes)")
 
 # ---------------------------------------------------------------------------
