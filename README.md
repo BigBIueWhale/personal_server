@@ -232,14 +232,15 @@ Google Antigravity CLI (`agy`) is installed and configured with the same high-au
 bash scripts/00_install_antigravity_cli.sh        # run as the desktop user, NOT sudo
 ```
 
-Reference: [`scripts/00_install_antigravity_cli.sh`](./scripts/00_install_antigravity_cli.sh). Four sub-steps (after a preflight check of all managed state):
+Reference: [`scripts/00_install_antigravity_cli.sh`](./scripts/00_install_antigravity_cli.sh). Five sub-steps (after a preflight check of all managed state):
 
-1. Install via Google's official bootstrapper at `https://antigravity.google/cli/install.sh` when `/home/<user>/.local/bin/agy` is absent (fetches the platform release manifest, verifies the SHA-512 digest, and installs the binary), or update in place via `agy update` when already installed, verifying Antigravity CLI `1.3.5` or later.
+1. Install via Google's official bootstrapper at `https://antigravity.google/cli/install.sh` when `/home/<user>/.local/bin/agy` is absent (fetches the platform release manifest, verifies the SHA-512 digest, and installs the binary), or update in place via `agy update` when already installed, verifying Antigravity CLI `1.5.5` or later (the first release whose changelog lists Gemini 4 Carbon).
 2. Ensure `/home/<user>/.local/bin` is on `PATH` in `/home/<user>/.bashrc` via `agy install`.
-3. Merge the seven persistent managed keys into `/home/<user>/.gemini/antigravity-cli/settings.json` — `model: "Gemini 4 Argon (High)"` (`gemini-4-argon-high`), `verbosity: "high"`, `toolPermission: "always-proceed"`, `artifactReviewPolicy: "always-proceed"`, `allowNonWorkspaceAccess: true`, `showFeedbackSurvey: false`, and `showTips: false` — plus `"enableTelemetry": false` (which `agy` pushes to the account backend on startup via `syncTelemetryFromServer` and then strips via `MarshalSparse()`), while verifying that `enableTerminalSandbox` and `useG1Credits` are not enabled. Pre-existing unmanaged keys (such as `trustedWorkspaces`) are preserved untouched.
+3. Merge the seven persistent managed keys into `/home/<user>/.gemini/antigravity-cli/settings.json` — `model: "Gemini 4 Carbon (High)"` (`gemini-4-carbon-high`), `verbosity: "high"`, `toolPermission: "always-proceed"`, `artifactReviewPolicy: "always-proceed"`, `allowNonWorkspaceAccess: true`, `showFeedbackSurvey: false`, and `showTips: false` — plus `"enableTelemetry": false` (which `agy` pushes to the account backend on startup via `syncTelemetryFromServer` and then strips via `MarshalSparse()`), while verifying that `enableTerminalSandbox` and `useG1Credits` are not enabled. Pre-existing unmanaged keys (such as `trustedWorkspaces`) are preserved untouched. A `model` still holding the previous revision's `"Gemini 4 Argon (High)"` is upgraded in place.
 4. Create `/home/<user>/.gemini/config/AGENTS.md` with the same multi-step reasoning prompt used for `CLAUDE.md` (loaded by `agy` as `<RULE[user_global]>`).
+5. Append a marker-delimited block to `/home/<user>/.bashrc` with `alias agy='agy --dangerously-skip-permissions'`, so every interactive session auto-approves tool permissions. `agy` has no `settings.json` key for this flag; it is a per-session command-line option.
 
-Every managed item is checked before anything changes, so a conflict on any managed key, `AGENTS.md`, or `.bashrc` PATH block causes a loud refusal without modifying disk state.
+Every managed item is checked before anything changes, so a conflict on any managed key, `AGENTS.md`, or the `.bashrc` PATH or alias block causes a loud refusal without modifying disk state.
 
 To remove the installer-owned configuration later, run `bash scripts/00_install_antigravity_cli_undo.sh` as the desktop user. It preserves the `~/.local/bin/agy` binary, authentication, conversations, `~/.gemini/config/rules/`, and unmanaged `settings.json` keys such as `trustedWorkspaces`.
 

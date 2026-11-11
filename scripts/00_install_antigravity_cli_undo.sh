@@ -4,6 +4,10 @@
 #
 # WHAT IT UNDOES (mirror image of the install script, in reverse order)
 # ---------------------------------------------------------------------
+#   (e) ~/.bashrc alias block: removes the exact marker-delimited block the
+#       install script appends (a blank line, then the block that sets
+#       `alias agy='agy --dangerously-skip-permissions'`), if present. Refuses
+#       if the markers appear with modified content or more than once.
 #   (d) ~/.gemini/config/AGENTS.md: deletes the file ONLY IF it exists with the
 #       exact byte content the install script writes (335 bytes, ending in
 #       'patterns.\n'). Never touches ~/.gemini/config/rules/ or any other file.
@@ -70,6 +74,21 @@ before committing to a plan or making file edits. Verify assumptions
 against actual file contents rather than memory of "typical" patterns.
 '
 
+ALIAS_MARKER_BEGIN='# >>> antigravity cli config (managed by 00_install_antigravity_cli.sh) >>>'
+ALIAS_MARKER_END='# <<< antigravity cli config (managed by 00_install_antigravity_cli.sh) <<<'
+
+read -r -d '' ALIAS_BLOCK <<EOF || true
+$ALIAS_MARKER_BEGIN
+# Run every interactive agy session with --dangerously-skip-permissions.
+# agy has no settings.json key for this flag, so the alias sets it.
+# DO NOT EDIT lines inside this block by hand — 00_install_antigravity_cli.sh
+# will refuse to run if anything inside the markers has been changed.
+# To customize, delete the entire block (markers and all), edit the script
+# to match what you want, then re-run.
+alias agy='agy --dangerously-skip-permissions'
+$ALIAS_MARKER_END
+EOF
+
 section "verify Antigravity CLI managed state before undo"
 
 export U_BASHRC="$BASHRC"
@@ -77,6 +96,9 @@ export U_TARGET_HOME="$TARGET_HOME"
 export U_SETTINGS="$SETTINGS"
 export U_AGENTSMD="$AGENTSMD"
 export U_AGENTSMD_CONTENT="$AGENTSMD_CONTENT"
+export U_ALIAS_MARKER_BEGIN="$ALIAS_MARKER_BEGIN"
+export U_ALIAS_MARKER_END="$ALIAS_MARKER_END"
+export U_ALIAS_BLOCK="$ALIAS_BLOCK"
 
 python3 - <<'PYEOF'
 import json
@@ -89,6 +111,12 @@ TARGET_HOME      = os.environ["U_TARGET_HOME"]
 SETTINGS         = os.environ["U_SETTINGS"]
 AGENTSMD         = os.environ["U_AGENTSMD"]
 AGENTSMD_CONTENT = os.environ["U_AGENTSMD_CONTENT"]
+ALIAS_MARKER_BEGIN = os.environ["U_ALIAS_MARKER_BEGIN"]
+ALIAS_MARKER_END   = os.environ["U_ALIAS_MARKER_END"]
+ALIAS_BLOCK        = os.environ["U_ALIAS_BLOCK"]
+
+# Exactly what step (e) of the install script appends.
+STEP_E_APPEND = "\n" + ALIAS_BLOCK + "\n"
 
 STEP_B_MARKER = "# Added by Antigravity CLI installer"
 STEP_B_APPEND = (
@@ -100,7 +128,7 @@ STEP_B_APPEND = (
 WANT = {
     "allowNonWorkspaceAccess": True,
     "artifactReviewPolicy": "always-proceed",
-    "model": "Gemini 4 Argon (High)",
+    "model": "Gemini 4 Carbon (High)",
     "showFeedbackSurvey": False,
     "showTips": False,
     "toolPermission": "always-proceed",
@@ -133,6 +161,17 @@ if n_b > 1 or n_marker != n_b:
     problems.append(
         f"(b) {BASHRC}: unexpected Antigravity CLI PATH block state "
         f"(marker count={n_marker}, exact block count={n_b}; expected 0 or 1 exact match)."
+    )
+
+bashrc_lines = bashrc_text.splitlines()
+n_e_begin = bashrc_lines.count(ALIAS_MARKER_BEGIN)
+n_e_end = bashrc_lines.count(ALIAS_MARKER_END)
+n_e = bashrc_text.count(STEP_E_APPEND)
+if n_e > 1 or n_e_begin != n_e or n_e_end != n_e:
+    problems.append(
+        f"(e) {BASHRC}: unexpected Antigravity CLI alias block state "
+        f"(begin markers={n_e_begin}, end markers={n_e_end}, exact block count={n_e}; "
+        f"expected 0 or 1 exact match)."
     )
 
 settings_data = None
@@ -198,6 +237,10 @@ if problems:
 
 print("[info] Phase 1: all preconditions verified.")
 print(
+    f"[info]   (e) {BASHRC}: alias block present: "
+    f"{'yes' if n_e == 1 else 'no'}"
+)
+print(
     f"[info]   (b) {BASHRC}: PATH addition present: "
     f"{'yes' if n_b == 1 else 'no'}"
 )
@@ -205,7 +248,7 @@ print(f"[info]   (c) {SETTINGS}: all 7 persistent managed keys match install WAN
 print(f"[info]   (d) {AGENTSMD}: byte-for-byte match ({len(agentsmd_text)} bytes)")
 
 # ---------------------------------------------------------------------------
-# PHASE 2 — execute removals atomically. Order: d -> c -> b.
+# PHASE 2 — execute removals atomically. Order: e -> d -> c -> b.
 # ---------------------------------------------------------------------------
 
 print()
@@ -252,15 +295,26 @@ print(
     f"remaining unmanaged keys: {remaining_keys or '(none)'}"
 )
 
-# (b) ~/.bashrc — remove the PATH addition if present.
+# (e)+(b) ~/.bashrc — remove the alias block and the PATH addition, each if
+# present, in one atomic rewrite.
+new_bashrc = bashrc_text
+if n_e == 1:
+    new_bashrc = new_bashrc.replace(STEP_E_APPEND, "", 1)
+    assert new_bashrc != bashrc_text, "internal error: (e) replace was a no-op"
 if n_b == 1:
-    new_bashrc = bashrc_text.replace(STEP_B_APPEND, "", 1)
-    assert new_bashrc != bashrc_text, "internal error: (b) replace was a no-op"
+    before_b = new_bashrc
+    new_bashrc = new_bashrc.replace(STEP_B_APPEND, "", 1)
+    assert new_bashrc != before_b, "internal error: (b) replace was a no-op"
+if new_bashrc != bashrc_text:
     atomic_write(BASHRC, new_bashrc)
     removed_bytes = len(bashrc_text) - len(new_bashrc)
-    print(f"[info]   (b) rewrote {BASHRC} (-{removed_bytes} bytes)")
+    print(
+        f"[info]   (e)+(b) rewrote {BASHRC} (-{removed_bytes} bytes; "
+        f"alias block removed: {'yes' if n_e == 1 else 'no'}, "
+        f"PATH block removed: {'yes' if n_b == 1 else 'no'})"
+    )
 else:
-    print(f"[info]   (b) no Antigravity CLI PATH block in {BASHRC}; leaving alone")
+    print(f"[info]   (e)+(b) no Antigravity CLI alias or PATH block in {BASHRC}; leaving alone")
 
 # ---------------------------------------------------------------------------
 # Final cross-check
@@ -270,6 +324,8 @@ with open(BASHRC, encoding="utf-8") as f:
     after_bashrc = f.read()
     if STEP_B_APPEND in after_bashrc or STEP_B_MARKER in after_bashrc:
         sys.exit("[fatal] post-state: Antigravity PATH block still present in ~/.bashrc")
+    if ALIAS_MARKER_BEGIN in after_bashrc or ALIAS_MARKER_END in after_bashrc:
+        sys.exit("[fatal] post-state: Antigravity alias block still present in ~/.bashrc")
 with open(SETTINGS, encoding="utf-8") as f:
     after = json.load(f)
 for k in WANT:

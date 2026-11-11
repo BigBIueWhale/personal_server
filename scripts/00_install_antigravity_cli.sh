@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # scripts/00_install_antigravity_cli.sh — install Google Antigravity CLI (agy)
-# and configure high-autonomy, high-reasoning defaults for Gemini 4 Argon (High).
+# and configure high-autonomy, high-reasoning defaults for Gemini 4 Carbon (High),
+# with every interactive `agy` run under --dangerously-skip-permissions.
 #
 # WHAT IT DOES (in order; each step is idempotent — see CONFIGURATION SAFETY)
 # ---------------------------------------------------------------------------
-#   (0) Check: every managed item in (b)-(d) is checked before anything is
+#   (0) Check: every managed item in (b)-(e) is checked before anything is
 #       changed, so a refusal leaves the machine as it was.
 #   (a) Install/update: if /home/<user>/.local/bin/agy is absent, run Google's
 #       official bootstrapper (https://antigravity.google/cli/install.sh), which
 #       fetches the platform release manifest, SHA-512-verifies the archive, and
 #       installs /home/<user>/.local/bin/agy. If the binary is already installed,
 #       run `agy update` to update in place on the latest channel, then verify
-#       version >= 1.3.5.
+#       version >= 1.5.5.
 #   (b) PATH: ensure /home/<user>/.local/bin is on PATH in /home/<user>/.bashrc
 #       via `agy install` (which appends its canonical 2-line PATH snippet if
 #       not already present).
@@ -21,11 +22,17 @@
 #       backend on startup and then strips via its sparse marshaler) and verify
 #       that default-false keys (`enableTerminalSandbox`, `useG1Credits`) are
 #       not enabled. Pre-existing unmanaged keys (such as `trustedWorkspaces`)
-#       are preserved untouched. If any managed key holds a conflicting value,
-#       the script REFUSES.
+#       are preserved untouched. The previous revision's
+#       `model: "Gemini 4 Argon (High)"` is upgraded in place; if any managed
+#       key holds any other conflicting value, the script REFUSES.
 #   (d) AGENTS.md: create /home/<user>/.gemini/config/AGENTS.md with the
 #       multi-step reasoning prompt loaded by `agy` as `<RULE[user_global]>`.
 #       If the file already exists with different content, the script REFUSES.
+#   (e) Alias: append a marker-delimited block to /home/<user>/.bashrc with
+#       `alias agy='agy --dangerously-skip-permissions'`. agy has no
+#       settings.json key for that flag; it is a per-session command-line
+#       option, so the alias is what makes it the default. If a block with
+#       different content exists, the script REFUSES.
 #
 # CONFIGURATION SAFETY (by design — re-running this script is safe)
 # -----------------------------------------------------------------
@@ -42,10 +49,14 @@
 #     `false` (awaiting first authenticated startup sync) or absent (already
 #     synced and stripped by `MarshalSparse()`), and `enableTerminalSandbox` /
 #     `useG1Credits` are absent. Any other value on any of these ten keys causes
-#     a loud refusal before anything is modified.
+#     a loud refusal before anything is modified, except the previous
+#     revision's model value, which is upgraded in place.
 #   - Unmanaged keys (e.g. `trustedWorkspaces`) are preserved untouched.
 #   - AGENTS.md is created only if absent; if it exists with our exact 335
 #     bytes, no-op; if it exists with anything else, fatal.
+#   - The .bashrc alias block is appended only if absent; if it exists with
+#     our exact content, no-op; unbalanced or repeated markers, or any other
+#     content inside them, is fatal.
 #
 # RUN AS THE DESKTOP USER (NOT sudo)
 # ----------------------------------
@@ -57,7 +68,7 @@
 #   bash scripts/00_install_antigravity_cli.sh
 #
 # After it finishes, open a new shell (or `source ~/.bashrc`) so PATH updates
-# take effect, then run `agy`.
+# and the alias take effect, then run `agy`.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
@@ -101,8 +112,10 @@ fi
 #       without interactive confirmation prompts.
 #   artifactReviewPolicy    = "always-proceed"
 #       Never block execution waiting for manual approval on artifact plans.
-#   model                   = "Gemini 4 Argon (High)"
-#       Pin Gemini 4 Argon at High thinking effort (`gemini-4-argon-high`).
+#   model                   = "Gemini 4 Carbon (High)"
+#       Pin Gemini 4 Carbon at High thinking effort (`gemini-4-carbon-high`).
+#       The previous revision of this script pinned "Gemini 4 Argon (High)";
+#       that exact value, and only that, is upgraded in place.
 #   showFeedbackSurvey      = false
 #       Disable in-session feedback survey prompts.
 #   showTips                = false
@@ -127,6 +140,50 @@ reasoning is expected for any non-trivial change. Think carefully
 before committing to a plan or making file edits. Verify assumptions
 against actual file contents rather than memory of "typical" patterns.
 '
+
+# The .bashrc block that makes --dangerously-skip-permissions the default.
+ALIAS_MARKER_BEGIN='# >>> antigravity cli config (managed by 00_install_antigravity_cli.sh) >>>'
+ALIAS_MARKER_END='# <<< antigravity cli config (managed by 00_install_antigravity_cli.sh) <<<'
+
+read -r -d '' ALIAS_BLOCK <<EOF || true
+$ALIAS_MARKER_BEGIN
+# Run every interactive agy session with --dangerously-skip-permissions.
+# agy has no settings.json key for this flag, so the alias sets it.
+# DO NOT EDIT lines inside this block by hand — 00_install_antigravity_cli.sh
+# will refuse to run if anything inside the markers has been changed.
+# To customize, delete the entire block (markers and all), edit the script
+# to match what you want, then re-run.
+alias agy='agy --dangerously-skip-permissions'
+$ALIAS_MARKER_END
+EOF
+
+# The state helpers below print one word or die. Capture them with a plain
+# assignment (STATE="$(helper)") so a refusal stops the script.
+
+# Prints the .bashrc alias block state: absent or current. Dies on unbalanced
+# or repeated markers, or a block with any other content.
+alias_block_state() {
+    local n_begin n_end existing
+    n_begin="$(grep -cFx "$ALIAS_MARKER_BEGIN" "$BASHRC" || true)"
+    n_end="$(grep -cFx "$ALIAS_MARKER_END" "$BASHRC" || true)"
+    [ "$n_begin" = "$n_end" ] \
+        || die "$BASHRC has $n_begin '$ALIAS_MARKER_BEGIN' lines but $n_end '$ALIAS_MARKER_END' lines — markers are unbalanced; refusing to touch"
+    [ "$n_begin" -le 1 ] \
+        || die "$BASHRC has $n_begin copies of the Antigravity CLI alias block — there must be at most one; refusing to touch"
+    if [ "$n_begin" = 0 ]; then
+        echo absent
+        return
+    fi
+    # First BEGIN line through first END line, inclusive.
+    existing="$(awk -v b="$ALIAS_MARKER_BEGIN" -v e="$ALIAS_MARKER_END" '
+        $0 == b { p=1 }
+        p { print }
+        $0 == e { exit }
+    ' "$BASHRC")"
+    [ "$existing" = "$ALIAS_BLOCK" ] \
+        || die "$(printf 'FATAL: existing Antigravity CLI alias block in %s does not match expected content.\nRefusing to overwrite. To proceed:\n  1. Open %s in an editor.\n  2. Delete the entire block (lines from "%s"\n     through "%s" inclusive).\n  3. Re-run this script.' "$BASHRC" "$BASHRC" "$ALIAS_MARKER_BEGIN" "$ALIAS_MARKER_END")"
+    echo current
+}
 
 # Prints the .bashrc Antigravity PATH snippet state: absent or current.
 # Dies if the marker comment appears more than once or with unexpected lines.
@@ -163,8 +220,9 @@ PYEOF
 }
 
 # Decides the settings.json merge and, in write mode, writes the merged result
-# to DEST. Prints the state it found: current or missing. Exits 2, naming every
-# conflict, if any managed or default-false key holds a conflicting value.
+# to DEST. Prints the state it found: current, previous (the model key holds
+# the previous revision's value) or missing. Exits 2, naming every conflict, if
+# any managed or default-false key holds any other conflicting value.
 #   settings_merge check SETTINGS
 #   settings_merge write SETTINGS DEST
 settings_merge() {
@@ -178,11 +236,17 @@ mode, src = sys.argv[1], sys.argv[2]
 WANT = {
     "allowNonWorkspaceAccess": True,
     "artifactReviewPolicy": "always-proceed",
-    "model": "Gemini 4 Argon (High)",
+    "model": "Gemini 4 Carbon (High)",
     "showFeedbackSurvey": False,
     "showTips": False,
     "toolPermission": "always-proceed",
     "verbosity": "high",
+}
+
+# What the previous revision of this script wrote for keys whose wanted value
+# has changed since. Exactly these values are upgraded in place.
+PREVIOUS = {
+    "model": "Gemini 4 Argon (High)",
 }
 
 # Keys whose wanted value is False and which agy's MarshalSparse() omits when
@@ -221,10 +285,14 @@ if os.path.lexists(src):
 if not isinstance(data, dict):
     fail(f"[fatal] {src} is not a JSON object (top-level must be {{...}})")
 
+def previous_value(key):
+    return key in data and key in PREVIOUS and same(data[key], PREVIOUS[key])
+
+
 conflicts = [
     f"  {k}: have {data[k]!r}, want {v!r}"
     for k, v in WANT.items()
-    if k in data and not same(data[k], v)
+    if k in data and not same(data[k], v) and not previous_value(k)
 ]
 conflicts += [
     f"  {k}: have {data[k]!r}, want False (or absent)"
@@ -250,6 +318,8 @@ if (
     and "useG1Credits" not in data
 ):
     state = "current"
+elif any(previous_value(k) for k in WANT):
+    state = "previous"
 else:
     state = "missing"
 
@@ -291,6 +361,8 @@ SETTINGS_STATE="$(settings_merge check "$SETTINGS")"
 info "$SETTINGS managed keys: $SETTINGS_STATE"
 AGENTSMD_STATE="$(agentsmd_state)"
 info "$AGENTSMD: $AGENTSMD_STATE"
+ALIAS_STATE="$(alias_block_state)"
+info "$BASHRC Antigravity CLI alias block: $ALIAS_STATE"
 
 # ---------------------------------------------------------------------------
 # (a) install or update Antigravity CLI
@@ -327,8 +399,9 @@ info "agy --version: $VER_LINE"
 AGY_VERSION="${VER_LINE##* }"
 [[ "$AGY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
     || die "cannot parse Antigravity CLI version from '$VER_LINE'"
-dpkg --compare-versions "$AGY_VERSION" ge 1.3.5 \
-    || die "Gemini 4 Argon (High) requires Antigravity CLI 1.3.5 or later, got $AGY_VERSION"
+# 1.5.5 is the first release whose changelog lists Gemini 4 Carbon.
+dpkg --compare-versions "$AGY_VERSION" ge 1.5.5 \
+    || die "Gemini 4 Carbon (High) requires Antigravity CLI 1.5.5 or later, got $AGY_VERSION"
 
 # ---------------------------------------------------------------------------
 # (b) ensure ~/.local/bin is on PATH in ~/.bashrc via `agy install`
@@ -407,10 +480,35 @@ fi
     || die "$AGENTSMD does not match the expected content after writing it"
 
 # ---------------------------------------------------------------------------
+# (e) ~/.bashrc alias: --dangerously-skip-permissions by default
+# ---------------------------------------------------------------------------
+
+section "(e) Antigravity CLI alias block in $BASHRC"
+
+ALIAS_STATE="$(alias_block_state)"
+case "$ALIAS_STATE" in
+    current)
+        info "Antigravity CLI alias block already present and matches expected content — no change"
+        ;;
+    absent)
+        info "appending Antigravity CLI alias block to $BASHRC"
+        {
+            printf '\n'
+            printf '%s\n' "$ALIAS_BLOCK"
+        } >> "$BASHRC"
+        ;;
+    *)
+        die "unexpected Antigravity CLI alias block state '$ALIAS_STATE'"
+        ;;
+esac
+[ "$(alias_block_state)" = current ] \
+    || die "$BASHRC Antigravity CLI alias block does not match the expected content after writing it"
+
+# ---------------------------------------------------------------------------
 # done
 # ---------------------------------------------------------------------------
 
 section "success — Antigravity CLI installed and configured"
-info "Open a NEW shell (or run 'source ~/.bashrc') so PATH updates take effect."
+info "Open a NEW shell (or run 'source ~/.bashrc') so the PATH and alias take effect."
 info "Then run 'agy' and walk through the authentication flow on first launch."
-info "Managed defaults: model='Gemini 4 Argon (High)', verbosity=high, toolPermission=always-proceed, artifactReviewPolicy=always-proceed, allowNonWorkspaceAccess=true, showFeedbackSurvey=false, showTips=false, enableTelemetry=false."
+info "Managed defaults: model='Gemini 4 Carbon (High)', alias agy='agy --dangerously-skip-permissions', verbosity=high, toolPermission=always-proceed, artifactReviewPolicy=always-proceed, allowNonWorkspaceAccess=true, showFeedbackSurvey=false, showTips=false, enableTelemetry=false."
