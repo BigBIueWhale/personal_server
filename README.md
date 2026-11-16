@@ -58,7 +58,7 @@ Every apt package and every downloaded asset is pinned in [`scripts/lib/versions
 | CUDA Toolkit | `cuda-toolkit-13-0 = 13.0.3-1` |
 | Docker CE + plugins | Engine/CLI `29.8.1`; containerd `2.3.5`; Buildx `0.37.1`; Compose `5.5.1` (exact Docker noble package revisions in `versions.sh`) |
 | NVIDIA Container Toolkit | `nvidia-container-toolkit = 1.20.1-1` (and matching libs) |
-| TeamViewer | `15.81.5` (version-specific dl.teamviewer.com URL + SHA-256) |
+| TeamViewer | `15.83.3` (version-specific dl.teamviewer.com URL + SHA-256) |
 | OpenAI Codex CLI | `0.159.0` standalone release; default model `gpt-6.1-sol` |
 | Linux kernel | Not pinned: Ubuntu's HWE line, through `linux-generic-hwe-24.04`. [§20](#20-kernel-security-gate) proves from the running kernel's own code that it is safe to expose |
 
@@ -447,7 +447,7 @@ The container's `nvidia-smi` should print the same RTX and driver/CUDA version a
 sudo bash scripts/10_install_teamviewer.sh
 ```
 
-Reference: [`scripts/10_install_teamviewer.sh`](./scripts/10_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.81.5`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.81.5`, installs via `apt install ./<deb>`. Full client, not the host-only build.
+Reference: [`scripts/10_install_teamviewer.sh`](./scripts/10_install_teamviewer.sh). Downloads the **pinned TeamViewer `15.83.3`** from the version-specific `dl.teamviewer.com` URL — the plain `download.teamviewer.com` URL serves whatever is current and CANNOT be pinned; the version-specific path can. Verifies SHA-256, confirms `dpkg-deb --field` reports `Package=teamviewer` and `Version=15.81.5`, installs via `apt install ./<deb>`. Full client, not the host-only build.
 
 After install, `teamviewerd` listens on `127.0.0.1:5939` only (localhost). TeamViewer reaches its cloud relay infrastructure via outbound connections; no inbound exposure is required or desired. The script verifies the listener is on 127.0.0.1 and aborts loud if it ever appears on `0.0.0.0`.
 

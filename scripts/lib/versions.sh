@@ -72,9 +72,14 @@ CUDA_SMOKE_TEST_IMAGE=nvidia/cuda:12.8.0-base-ubuntu24.04
 # download.teamviewer.com URL serves whatever is current and CANNOT be pinned;
 # the dl.teamviewer.com path with version_15x/<file>_<version>_amd64.deb is the
 # version-specific redirect target and IS stable.
-TEAMVIEWER_VERSION=15.81.5
+# 15.83.3 (16/11/2026): the current release, fixing TeamViewer bulletins
+# TV-2026-1010 (fixed in 15.82: CVE-2026-19743, root file writes through the
+# local IPC service on 127.0.0.1:5939, and four more) and TV-2026-1011 (fixed
+# in 15.83). SHA-256 checked twice: the download itself, and the same value in
+# TeamViewer's signed apt repository (linux.teamviewer.com, stable/main amd64).
+TEAMVIEWER_VERSION=15.83.3
 TEAMVIEWER_DEB_URL="https://dl.teamviewer.com/download/linux/version_15x/teamviewer_${TEAMVIEWER_VERSION}_amd64.deb"
-TEAMVIEWER_DEB_SHA256=59fd0c99f3a2e6bc975863a9a9e9d952ede499080909aaadfdf13a67f6eb31e2
+TEAMVIEWER_DEB_SHA256=f3130d24edbe259ef5ba46a543c6d5a823aea2a14f533834f2e484bfdca68909
 
 # -- Developer toolchain (intentionally unpinned) ------------------------------
 # scripts/11_install_developer_toolchain.sh installs four components that are
