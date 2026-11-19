@@ -67,5 +67,43 @@ class HostProcessDirsTests(unittest.TestCase):
                 host_process_dirs(proc)
 
 
+    def add_unreadable_process(self, proc: pathlib.Path, pid: int) -> pathlib.Path:
+        """A caller-owned process whose namespace link cannot be read (as for a
+        non-dumpable process of the same user, such as systemd --user)."""
+        entry = self.add_process(proc, pid, host_namespace=True)
+        (entry / "ns").chmod(0)
+        return entry
+
+    def test_unreadable_own_process_refuses_without_a_predicate(self) -> None:
+        if os.geteuid() == 0:
+            self.skipTest("root reads through a 000 directory")
+        with tempfile.TemporaryDirectory() as directory:
+            proc = self.make_proc(pathlib.Path(directory))
+            self.add_unreadable_process(proc, 404)
+
+            with self.assertRaisesRegex(HostProcessScopeError, "cannot classify caller-owned process pid=404"):
+                host_process_dirs(proc)
+
+    def test_unreadable_own_process_skipped_when_not_relevant(self) -> None:
+        if os.geteuid() == 0:
+            self.skipTest("root reads through a 000 directory")
+        with tempfile.TemporaryDirectory() as directory:
+            proc = self.make_proc(pathlib.Path(directory))
+            host = self.add_process(proc, 101, host_namespace=True)
+            self.add_unreadable_process(proc, 404)
+
+            self.assertEqual(host_process_dirs(proc, relevant=lambda entry: False), [host])
+
+    def test_unreadable_own_process_refuses_when_relevant(self) -> None:
+        if os.geteuid() == 0:
+            self.skipTest("root reads through a 000 directory")
+        with tempfile.TemporaryDirectory() as directory:
+            proc = self.make_proc(pathlib.Path(directory))
+            self.add_unreadable_process(proc, 404)
+
+            with self.assertRaisesRegex(HostProcessScopeError, "cannot classify caller-owned process pid=404"):
+                host_process_dirs(proc, relevant=lambda entry: entry.name == "404")
+
+
 if __name__ == "__main__":
     unittest.main()

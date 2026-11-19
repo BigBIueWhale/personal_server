@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+from typing import Callable, Optional
 
 
 class HostProcessScopeError(RuntimeError):
@@ -16,7 +17,10 @@ def _namespace_identity(path: pathlib.Path) -> tuple[int, int]:
     return stat.st_dev, stat.st_ino
 
 
-def host_process_dirs(proc: pathlib.Path = pathlib.Path("/proc")) -> list[pathlib.Path]:
+def host_process_dirs(
+    proc: pathlib.Path = pathlib.Path("/proc"),
+    relevant: Optional[Callable[[pathlib.Path], bool]] = None,
+) -> list[pathlib.Path]:
     """Return numeric /proc entries in the caller's own PID namespace.
 
     A host can see processes in descendant PID namespaces, including Docker
@@ -26,7 +30,10 @@ def host_process_dirs(proc: pathlib.Path = pathlib.Path("/proc")) -> list[pathli
 
     Processes that exit during the snapshot and inaccessible processes owned by
     another user are skipped.  Failure to classify one of the caller's own
-    processes is an error so per-user cleanup cannot silently miss a candidate.
+    processes is an error so per-user cleanup cannot silently miss a candidate,
+    unless the caller passes ``relevant`` and it says that process cannot be one
+    the caller looks for (a non-dumpable process of the caller, such as
+    ``systemd --user``, hides its namespace from the same user).
     """
     if not proc.is_dir():
         raise HostProcessScopeError(f"{proc}: process filesystem is unavailable")
@@ -53,6 +60,8 @@ def host_process_dirs(proc: pathlib.Path = pathlib.Path("/proc")) -> list[pathli
             except (FileNotFoundError, PermissionError, ProcessLookupError):
                 continue
             if owned_by_caller:
+                if relevant is not None and not relevant(entry):
+                    continue
                 raise HostProcessScopeError(
                     f"cannot classify caller-owned process pid={entry.name}: {error}"
                 ) from error
