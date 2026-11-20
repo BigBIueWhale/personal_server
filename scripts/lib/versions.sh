@@ -109,8 +109,9 @@ TEAMVIEWER_DEB_SHA256=f3130d24edbe259ef5ba46a543c6d5a823aea2a14f533834f2e484bfdc
 # installer above never touches it, and an old one (0.159.0) could not serve
 # gpt-6.2-sol on a ChatGPT sign-in. 00_install_codex_cli.sh therefore also runs
 # Codex's own `codex app-server daemon update --from-cli --yes` ("Copy and pin
-# this CLI package"), which makes the daemon exactly this release and pins it
-# against Codex's automatic updates. Plain `daemon update` is NOT used: it
+# this CLI package"), which makes the daemon exactly this release (Codex names
+# the copy releases/local-<64 hex>-<target>) and pins it against Codex's
+# automatic updates (a pinned daemon has no auto-update-version file). Plain `daemon update` is NOT used: it
 # ignores CODEX_RELEASE and installs whatever "latest" is.
 #
 # Keep this as an exact release pin. Before changing it, install and exercise the
