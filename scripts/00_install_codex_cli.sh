@@ -10,7 +10,8 @@
 # approval_policy="never" plus sandbox_mode="danger-full-access" in
 # ~/.codex/config.toml. This script writes one direct, exact, managed config file
 # instead of creating profiles, pins the model to gpt-6.2-sol, and installs one
-# exact Codex CLI release.
+# exact Codex CLI release. The same release is also put on Codex's own local
+# app-server daemon, which is a second, separately versioned package.
 #
 # WHAT IT DOES (idempotently)
 # ---------------------------
@@ -31,14 +32,36 @@
 #       install are still running, because they can recreate old model-cache
 #       state. Processes in descendant/container PID namespaces are ignored
 #       before command-line reconnaissance; this script never signals processes.
+#       The one exception is Codex's own managed app-server daemon and its
+#       pid-update-loop, run from ~/.codex/packages/app-server-daemon/releases/
+#       <release>/bin/: step (e) brings them to the pin.
+#   (e) Put Codex's local app-server daemon (the process the VS Code Codex
+#       extension talks to; ~/.codex/packages/app-server-daemon) on the same
+#       exact release, when that package exists. The upstream standalone
+#       installer never touches it, so it had stayed on 0.159.0 beside a 0.170.0
+#       CLI, and that old daemon could not serve gpt-6.2-sol on a ChatGPT
+#       sign-in. This script runs Codex's own `codex app-server daemon update
+#       --from-cli --yes` ("Copy and pin this CLI package"): the pinned CLI's own
+#       package becomes the daemon's release and is pinned against Codex's
+#       automatic updates (plain `daemon update` ignores CODEX_RELEASE and
+#       installs "latest", so it cannot hold a pin). It then verifies with
+#       `codex app-server daemon version`, prunes every other daemon release
+#       directory once no process runs from it, and verifies that the final
+#       daemon release set is exactly the pinned release. A daemon NEWER than
+#       the pin is refused, never downgraded: bump CODEX_CLI_VERSION first.
 #
 # IDEMPOTENCY
 # -----------
 # Already on the pinned release -> upstream no-op; known old state -> exact
 # migration; unknown drift -> refuse before managed state writes. This script
 # never touches Codex auth, sessions, logs, plugins, MCP servers, goals, memory,
-# shell snapshots, or other accumulated state outside the managed config, model
-# cache, standalone release tree, and exact PATH block.
+# shell snapshots, the daemon's runtime state (~/.codex/app-server-daemon and
+# ~/.codex/app-server-control), or other accumulated state outside the managed
+# config, model cache, standalone release tree, app-server daemon package tree
+# (~/.codex/packages/app-server-daemon), and exact PATH block. The only thing
+# done to the running daemon is Codex's own `daemon update --from-cli` command,
+# which restarts it; work running in the daemon is interrupted after Codex's
+# own shutdown grace, so run this when the daemon is idle.
 #
 # RUN AS THE DESKTOP USER (NOT sudo)
 # ----------------------------------
@@ -82,6 +105,7 @@ STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
 STANDALONE_CURRENT="$STANDALONE_ROOT/current"
 CODEX_BIN_TARGET="$STANDALONE_CURRENT/bin/codex"
+DAEMON_ROOT="$CODEX_HOME_DIR/packages/app-server-daemon"
 INSTALLER_URL="https://chatgpt.com/codex/install.sh"
 
 # ---------------------------------------------------------------------------
@@ -99,6 +123,7 @@ codex_state_guard() {
     export C_CODEX_BIN_TARGET="$CODEX_BIN_TARGET"
     export C_STANDALONE_CURRENT="$STANDALONE_CURRENT"
     export C_RELEASES_DIR="$RELEASES_DIR"
+    export C_DAEMON_ROOT="$DAEMON_ROOT"
     export C_CODEX_CLI_VERSION="$CODEX_CLI_VERSION"
     export C_SCRIPT_DIR="$SCRIPT_DIR"
     python3 - <<'PYEOF'
@@ -110,6 +135,7 @@ import os
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import tomllib
@@ -127,7 +153,9 @@ CODEX_BIN = pathlib.Path(os.environ["C_CODEX_BIN"])
 CODEX_BIN_TARGET = pathlib.Path(os.environ["C_CODEX_BIN_TARGET"])
 STANDALONE_CURRENT = pathlib.Path(os.environ["C_STANDALONE_CURRENT"])
 RELEASES_DIR = pathlib.Path(os.environ["C_RELEASES_DIR"])
+DAEMON_ROOT = pathlib.Path(os.environ["C_DAEMON_ROOT"])
 CODEX_CLI_VERSION = os.environ["C_CODEX_CLI_VERSION"]
+PROC = pathlib.Path("/proc")
 
 # Upstream names each release directory "<version>-<vendor_target>"
 # (install.sh: release_name="$resolved_version-$vendor_target"). Its Linux
@@ -149,6 +177,42 @@ if _ARCH is None:
     sys.exit(2)
 VENDOR_TARGET = f"{_ARCH}-unknown-linux-musl"
 PINNED_RELEASE_DIR = f"{CODEX_CLI_VERSION}-{VENDOR_TARGET}"
+STABLE_RELEASE_RE = re.compile(r"^([0-9]+)\.([0-9]+)\.([0-9]+)-" + re.escape(VENDOR_TARGET) + r"$")
+
+# Codex's own local app-server daemon (the process the VS Code Codex extension
+# talks to) is a SECOND, separately versioned package tree. The upstream
+# standalone installer never touches it, so it stays on whatever release Codex
+# last put there (0.159.0 for months beside a 0.170.0 CLI). Layout, from the
+# upstream install.sh (CODEX_INSTALL_DAEMON_ONLY=1 selects this root) and from a
+# real tree: releases/<version>-<target>, a `current` symlink, selection-history,
+# install.lock, and auto-update-version. The last file is the auto-update switch:
+# install.sh writes it after a `latest` install and removes it after any pinned
+# install, and a scheduled update exits unless it names the selected release.
+# `codex app-server daemon update --from-cli --yes` ("Copy and pin this CLI
+# package") copies the running CLI's own package into this tree and pins it
+# against automatic updates; plain `daemon update` ignores CODEX_RELEASE and
+# installs "latest". Any other entry in the tree is drift and refuses.
+DAEMON_RELEASES_DIR = DAEMON_ROOT / "releases"
+DAEMON_CURRENT = DAEMON_ROOT / "current"
+DAEMON_AUTO_UPDATE_VERSION = DAEMON_ROOT / "auto-update-version"
+DAEMON_ROOT_ENTRIES = frozenset(
+    {"auto-update-version", "current", "install.lock", "releases", "selection-history"}
+)
+
+# Helper programs Codex's daemon starts from its own release directory.
+DAEMON_HELPER_BINARIES = ("codex-code-mode-host", "codex-exec-server")
+
+# Environment names Codex's own updater reads when it runs the upstream
+# installer. None may leak from the caller into `codex app-server daemon ...`.
+DAEMON_COMMAND_ENV_SCRUBBED = (
+    "CODEX_RELEASE",
+    "CODEX_NON_INTERACTIVE",
+    "CODEX_INSTALL_DAEMON_ONLY",
+    "CODEX_INSTALL_DEFER_SELECTION",
+    "CODEX_INSTALL_IF_CURRENT",
+    "CODEX_INSTALL_IF_LATEST",
+    "CODEX_UPDATE_FROM_RELEASE",
+)
 
 # Executable names upstream places in ~/.local/bin: install.sh links
 # codex-code-mode-host alongside codex when the release ships it.
@@ -382,7 +446,7 @@ def might_be_codex(entry: pathlib.Path) -> bool:
 
 def running_codex_process_problems() -> list[str]:
     problems: list[str] = []
-    proc = pathlib.Path("/proc")
+    proc = PROC
     try:
         entries = host_process_dirs(proc, relevant=might_be_codex)
     except HostProcessScopeError as error:
@@ -424,11 +488,358 @@ def running_codex_process_problems() -> list[str]:
         combined = " ".join([exe] + argv)
         if PINNED_RELEASE_DIR in combined:
             continue  # a process from the pinned release is the managed one
+        if daemon_role(exe, argv) is not None:
+            continue  # Codex's own managed daemon; commit() brings it to the pin
         if any(marker in combined for marker in FOREIGN_CODEX_MARKERS):
             problems.append(f"running host Codex from an unmanaged system install pid={pid}: {combined}")
         else:
             problems.append(f"running non-pinned host Codex process pid={pid}: {combined}")
 
+    return problems
+
+
+def refuse(title: str, problems: list[str]) -> None:
+    print(f"[fatal] {title}", file=sys.stderr)
+    for problem in problems:
+        print(f"  - {problem}", file=sys.stderr)
+    sys.exit(2)
+
+
+def release_version(name: str) -> tuple[int, int, int] | None:
+    """x.y.z of a stable release directory name for this platform, else None."""
+    match = STABLE_RELEASE_RE.fullmatch(name)
+    if match is None:
+        return None
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def pinned_version() -> tuple[int, int, int] | None:
+    match = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)", CODEX_CLI_VERSION)
+    if match is None:
+        return None  # validate_common() reports the malformed pin
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def daemon_exe_parts(exe: str) -> tuple[str, str] | None:
+    """(release directory, binary name) when `exe` is
+    <daemon releases>/<release>/bin/<binary>, else None."""
+    for root in {str(DAEMON_RELEASES_DIR), os.path.realpath(DAEMON_RELEASES_DIR)}:
+        prefix = root + "/"
+        if exe.startswith(prefix):
+            parts = exe[len(prefix):].split("/")
+            if len(parts) == 3 and RELEASE_DIR_RE.fullmatch(parts[0]) and parts[1] == "bin":
+                return parts[0], parts[2]
+    return None
+
+
+def daemon_role(exe: str, argv: list[str]) -> str | None:
+    """"daemon", "updater" or "helper" for a process that is part of Codex's own
+    managed app-server daemon, else None. Exact argv shapes only: a hand-run
+    `codex exec` from an old daemon release is still a stale host Codex."""
+    parts = daemon_exe_parts(exe)
+    if parts is None:
+        return None
+    binary = parts[1]
+    if binary == "codex":
+        if argv[1:] == ["app-server", "daemon", "pid-update-loop"]:
+            return "updater"
+        if argv[1:2] == ["app-server"] and "--managed-daemon" in argv[2:]:
+            return "daemon"
+        return None
+    if binary in DAEMON_HELPER_BINARIES:
+        return "helper"
+    return None
+
+
+def host_process_table() -> list[tuple[int, str, list[str]]]:
+    """(pid, executable, argv) for every process in the host's own PID namespace,
+    this installer and its ancestors excluded. Container processes are out of
+    scope exactly as in running_codex_process_problems(). An unreadable
+    executable or command line is reported as empty."""
+    try:
+        entries = host_process_dirs(PROC, relevant=might_be_codex)
+    except HostProcessScopeError as error:
+        die(f"cannot scope the Codex process scan to the host: {error}")
+    skip = self_and_ancestor_pids(PROC)
+    table: list[tuple[int, str, list[str]]] = []
+    for entry in entries:
+        pid = int(entry.name)
+        if pid in skip:
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            raw = b""
+        argv = [a for a in raw.decode("utf-8", "replace").split("\0") if a]
+        try:
+            exe = os.readlink(entry / "exe")
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            exe = ""
+        table.append((pid, exe, argv))
+    return table
+
+
+def managed_daemon_processes() -> list[tuple[int, str, str, str]]:
+    """(pid, role, release directory, executable) of Codex's managed daemon."""
+    found: list[tuple[int, str, str, str]] = []
+    for pid, exe, argv in host_process_table():
+        role = daemon_role(exe, argv)
+        parts = daemon_exe_parts(exe)
+        if role is not None and parts is not None:
+            found.append((pid, role, parts[0], exe))
+    return found
+
+
+def processes_using(directory: pathlib.Path) -> tuple[list[str], list[str]]:
+    """(running from `directory`, Codex-like but unverifiable) over host processes."""
+    roots = {str(directory), os.path.realpath(directory)}
+    using: list[str] = []
+    unverifiable: list[str] = []
+    for pid, exe, argv in host_process_table():
+        names = [name for name in (exe, argv[0] if argv else "") if name]
+        if any(name == root or name.startswith(root + "/") for name in names for root in roots):
+            using.append(f"pid={pid} {' '.join([exe] + argv)}")
+        elif not exe and argv and os.path.basename(argv[0]) in CODEX_BINARY_NAMES + ("rg", "bwrap") + DAEMON_HELPER_BINARIES:
+            unverifiable.append(f"pid={pid} {' '.join(argv)}")
+    return using, unverifiable
+
+
+def daemon_package_state(problems: list[str]) -> dict:
+    """Validate the daemon package tree and describe it: present, the selected
+    release directory name, and whether Codex's scheduled updater still follows
+    the latest channel (auto-update-version names the selected release)."""
+    state: dict = {"present": False, "selected": None, "following_latest": False}
+    if not path_exists(DAEMON_ROOT):
+        return state
+    state["present"] = True
+    if DAEMON_ROOT.is_symlink() or not DAEMON_ROOT.is_dir():
+        problems.append(f"{DAEMON_ROOT}: expected a real directory")
+        return state
+    for child in sorted(DAEMON_ROOT.iterdir()):
+        if child.name not in DAEMON_ROOT_ENTRIES:
+            problems.append(
+                f"{DAEMON_ROOT}: unexpected entry {child.name!r} (an interrupted Codex daemon "
+                "install, or a layout this installer does not know)"
+            )
+    for name in ("install.lock", "selection-history", "auto-update-version"):
+        file_path = DAEMON_ROOT / name
+        if path_exists(file_path) and (file_path.is_symlink() or not file_path.is_file()):
+            problems.append(f"{file_path}: expected a regular file")
+    if not path_exists(DAEMON_RELEASES_DIR):
+        problems.append(f"{DAEMON_RELEASES_DIR}: missing")
+    elif DAEMON_RELEASES_DIR.is_symlink() or not DAEMON_RELEASES_DIR.is_dir():
+        problems.append(f"{DAEMON_RELEASES_DIR}: expected a real directory")
+    else:
+        for child in sorted(DAEMON_RELEASES_DIR.iterdir()):
+            if not RELEASE_DIR_RE.fullmatch(child.name):
+                problems.append(f"{DAEMON_RELEASES_DIR}: unexpected entry {child.name!r} (not a release directory)")
+            elif child.is_symlink() or not child.is_dir():
+                problems.append(f"{child}: expected a real release directory")
+    if not path_exists(DAEMON_CURRENT):
+        problems.append(f"{DAEMON_CURRENT}: no daemon release is selected")
+        return state
+    if not DAEMON_CURRENT.is_symlink():
+        problems.append(f"{DAEMON_CURRENT}: expected symlink")
+        return state
+    target = pathlib.Path(os.path.realpath(DAEMON_CURRENT))
+    if target.parent != pathlib.Path(os.path.realpath(DAEMON_RELEASES_DIR)) or not target.is_dir():
+        problems.append(
+            f"{DAEMON_CURRENT}: points at {os.readlink(DAEMON_CURRENT)!r}, "
+            f"which is not a release directory under {DAEMON_RELEASES_DIR}"
+        )
+        return state
+    selected = target.name
+    version = release_version(selected)
+    if version is None:
+        problems.append(f"{DAEMON_CURRENT}: selected release {selected!r} is not a stable x.y.z-{VENDOR_TARGET} release")
+        return state
+    state["selected"] = selected
+    pin = pinned_version()
+    if pin is not None and version > pin:
+        problems.append(
+            f"{DAEMON_CURRENT}: the daemon runs release {selected}, NEWER than the pinned Codex "
+            f"{CODEX_CLI_VERSION}. This installer never downgrades the daemon: test that release and "
+            "bump CODEX_CLI_VERSION in scripts/lib/versions.sh, then re-run"
+        )
+    if path_exists(DAEMON_AUTO_UPDATE_VERSION) and DAEMON_AUTO_UPDATE_VERSION.is_file():
+        recorded = DAEMON_AUTO_UPDATE_VERSION.read_text(encoding="utf-8", errors="replace").strip()
+        if not RELEASE_DIR_RE.fullmatch(recorded):
+            problems.append(f"{DAEMON_AUTO_UPDATE_VERSION}: unexpected content {recorded!r}")
+        else:
+            state["following_latest"] = recorded == selected
+    return state
+
+
+def daemon_summary(daemon: dict) -> str:
+    if not daemon["present"]:
+        return "absent"
+    if daemon["selected"] == PINNED_RELEASE_DIR and not daemon["following_latest"]:
+        return f"pinned to {PINNED_RELEASE_DIR}"
+    latest = "follows Codex's latest channel" if daemon["following_latest"] else "pinned against auto-update"
+    return f"will be brought to {PINNED_RELEASE_DIR} (selected {daemon['selected']}, {latest})"
+
+
+def run_codex(args: list[str], capture: bool = False) -> subprocess.CompletedProcess:
+    env = {k: v for k, v in os.environ.items() if k not in DAEMON_COMMAND_ENV_SCRUBBED}
+    sys.stdout.flush()
+    sys.stderr.flush()
+    return subprocess.run(
+        [str(CODEX_BIN), *args],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE if capture else None,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+
+def daemon_package_json_problems() -> list[str]:
+    manifest = DAEMON_RELEASES_DIR / PINNED_RELEASE_DIR / "codex-package.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return [f"{manifest}: unreadable: {error}"]
+    problems: list[str] = []
+    if not isinstance(data, dict) or data.get("version") != CODEX_CLI_VERSION or data.get("target") != VENDOR_TARGET:
+        problems.append(f"{manifest}: not the pinned package ({CODEX_CLI_VERSION} / {VENDOR_TARGET})")
+    binary = DAEMON_RELEASES_DIR / PINNED_RELEASE_DIR / "bin" / "codex"
+    if not (binary.is_file() and os.access(binary, os.X_OK)):
+        problems.append(f"{binary}: missing or not executable")
+    return problems
+
+
+def daemon_version_problems(raw: str, daemon_running: bool) -> list[str]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as error:
+        return [f"`codex app-server daemon version` printed invalid JSON ({error}): {raw!r}"]
+    if not isinstance(data, dict):
+        return [f"`codex app-server daemon version` printed {raw!r}, expected a JSON object"]
+    problems: list[str] = []
+    if data.get("managedCodexVersion") != CODEX_CLI_VERSION:
+        problems.append(f"daemon version: managedCodexVersion is {data.get('managedCodexVersion')!r}, expected {CODEX_CLI_VERSION!r}")
+    running = data.get("appServerVersion")
+    if running is not None and running != CODEX_CLI_VERSION:
+        problems.append(f"daemon version: appServerVersion is {running!r}, expected {CODEX_CLI_VERSION!r}")
+    if running is None and daemon_running:
+        problems.append("a managed daemon process is running but daemon version reports no appServerVersion")
+    return problems
+
+
+def ensure_daemon_pinned() -> None:
+    """Bring Codex's managed app-server daemon, when it exists, onto exactly the
+    pinned release through Codex's own command; verify; prune the rest."""
+    problems: list[str] = []
+    daemon = daemon_package_state(problems)
+    if problems:
+        refuse("Codex app-server daemon refused; nothing was changed in the daemon tree.", problems)
+    if not daemon["present"]:
+        print(f"[info] {DAEMON_ROOT}: no Codex app-server daemon package; nothing to bring to the pin")
+        return
+
+    # `daemon update --from-cli` copies the CLI it is run from. Make sure that is
+    # the pinned standalone release, not whatever ~/.local/bin/codex points at.
+    cli = pathlib.Path(os.path.realpath(CODEX_BIN))
+    pinned_cli = pathlib.Path(os.path.realpath(RELEASES_DIR / PINNED_RELEASE_DIR / "bin" / "codex"))
+    if cli != pinned_cli:
+        die(f"{CODEX_BIN} resolves to {cli}, expected the pinned standalone release {pinned_cli}; refusing to copy it into the daemon tree")
+
+    off_pin = [
+        f"{role} pid={pid} runs from {exe}"
+        for pid, role, release, exe in managed_daemon_processes()
+        if release != PINNED_RELEASE_DIR
+    ]
+    reasons: list[str] = []
+    if daemon["selected"] != PINNED_RELEASE_DIR:
+        reasons.append(f"selected release is {daemon['selected']}")
+    if daemon["following_latest"]:
+        reasons.append("Codex's scheduled updater still follows the latest channel (auto-update-version names the selected release)")
+    reasons.extend(off_pin)
+
+    ran_update = False
+    if reasons:
+        print(f"[info] {DAEMON_ROOT}: daemon must be brought to {PINNED_RELEASE_DIR}: " + "; ".join(reasons))
+        print(
+            "[info] running Codex's own: codex app-server daemon update --from-cli --yes "
+            "(Codex restarts its daemon; work running in it is interrupted after Codex's shutdown grace)"
+        )
+        result = run_codex(["app-server", "daemon", "update", "--from-cli", "--yes"])
+        ran_update = True
+        if result.returncode != 0:
+            die(
+                f"`codex app-server daemon update --from-cli --yes` failed with exit {result.returncode}; "
+                "the daemon tree is as Codex left it. Read Codex's message above and re-run this installer"
+            )
+    else:
+        print(f"[info] {DAEMON_ROOT}: daemon already pinned to {PINNED_RELEASE_DIR}; leaving it alone")
+
+    problems = []
+    daemon = daemon_package_state(problems)
+    if daemon["selected"] != PINNED_RELEASE_DIR:
+        problems.append(
+            f"{DAEMON_CURRENT}: selected daemon release is {daemon['selected']!r}, expected {PINNED_RELEASE_DIR!r}"
+        )
+    if daemon["following_latest"]:
+        problems.append(
+            f"{DAEMON_AUTO_UPDATE_VERSION}: still names the selected release, so Codex's scheduled "
+            "updater still follows the latest channel and would replace the pin"
+        )
+    problems.extend(daemon_package_json_problems())
+    procs = managed_daemon_processes()
+    for pid, role, release, exe in procs:
+        if release != PINNED_RELEASE_DIR:
+            problems.append(
+                f"managed daemon {role} pid={pid} still runs from {exe}; run `codex app-server daemon "
+                "restart` when its work is idle (this installer never signals processes)"
+            )
+    if problems:
+        refuse("Codex app-server daemon is not on the pinned release.", problems)
+
+    daemon_running = any(role == "daemon" for _pid, role, _release, _exe in procs)
+    if ran_update or daemon_running:
+        result = run_codex(["app-server", "daemon", "version"], capture=True)
+        if result.returncode != 0:
+            refuse(
+                "`codex app-server daemon version` failed.",
+                [f"exit {result.returncode}, output {result.stdout!r}"],
+            )
+        print(f"[info] codex app-server daemon version: {' '.join(result.stdout.split())}")
+        version_problems = daemon_version_problems(result.stdout, daemon_running)
+        if version_problems:
+            refuse("Codex app-server daemon is not on the pinned release.", version_problems)
+
+    stale = [child for child in sorted(DAEMON_RELEASES_DIR.iterdir()) if child.name != PINNED_RELEASE_DIR]
+    blockers: list[str] = []
+    for child in stale:
+        using, unverifiable = processes_using(child)
+        blockers.extend(f"{child}: in use by {item}" for item in using)
+        blockers.extend(f"{child}: cannot prove unused, Codex-like process {item}" for item in unverifiable)
+    if blockers:
+        refuse(
+            "Refusing to prune non-pinned daemon releases that may still be running "
+            "(this installer never signals processes; stop them or let them finish, then re-run).",
+            blockers,
+        )
+    # Filesystem cleanup of exact children of the daemon's own release directory,
+    # each already validated by daemon_package_state() as a real release directory.
+    for child in stale:
+        shutil.rmtree(child)
+        print(f"[info] {child}: pruned non-pinned app-server daemon release")
+
+
+def daemon_final_problems() -> list[str]:
+    problems: list[str] = []
+    daemon = daemon_package_state(problems)
+    if not daemon["present"]:
+        return problems
+    names = sorted(p.name for p in DAEMON_RELEASES_DIR.iterdir()) if DAEMON_RELEASES_DIR.is_dir() else []
+    if names != [PINNED_RELEASE_DIR]:
+        problems.append(f"{DAEMON_RELEASES_DIR}: final daemon release set is {names!r}, expected {[PINNED_RELEASE_DIR]!r}")
+    if daemon["selected"] != PINNED_RELEASE_DIR:
+        problems.append(f"{DAEMON_CURRENT}: final current link does not point at {PINNED_RELEASE_DIR}")
+    if daemon["following_latest"]:
+        problems.append(f"{DAEMON_AUTO_UPDATE_VERSION}: final daemon still follows Codex's latest channel")
+    problems.extend(daemon_package_json_problems())
     return problems
 
 
@@ -549,6 +960,7 @@ def validate_common(allow_missing_binary: bool) -> dict[str, str]:
 
     config = config_state(problems)
     cache = model_cache_state(problems)
+    daemon = daemon_package_state(problems)
 
     if PHASE == "preflight":
         problems.extend(running_codex_process_problems())
@@ -588,6 +1000,7 @@ def validate_common(allow_missing_binary: bool) -> dict[str, str]:
     return {
         "config": config,
         "cache": cache,
+        "daemon": daemon_summary(daemon),
         "path_block_count": str(path_block_count),
     }
 
@@ -620,7 +1033,15 @@ def commit() -> None:
         print(f"[info] {CONFIG}: replacing {state['config']} with exact managed gpt-6.2-sol config")
         atomic_write(CONFIG, NEW_MANAGED_CONFIG + tail)
 
-    if state["cache"] == "stale-other-version":
+    ensure_daemon_pinned()
+
+    # Read the cache again AFTER the daemon step: until Codex restarts it, an old
+    # daemon can still write a cache stamped with its own client_version.
+    cache_problems: list[str] = []
+    cache_now = model_cache_state(cache_problems)
+    if cache_problems:
+        refuse("Codex model cache refused after the daemon step.", cache_problems)
+    if cache_now == "stale-other-version":
         MODEL_CACHE.unlink()
         print(f"[info] {MODEL_CACHE}: deleted model cache written by a different Codex client")
 
@@ -656,6 +1077,7 @@ def commit() -> None:
         final_problems.append(f"{STANDALONE_CURRENT}: final current link missing or not a symlink")
     elif pathlib.Path(os.readlink(STANDALONE_CURRENT)).name != PINNED_RELEASE_DIR:
         final_problems.append(f"{STANDALONE_CURRENT}: final current link does not point at {PINNED_RELEASE_DIR}")
+    final_problems.extend(daemon_final_problems())
     if final_problems:
         print("[fatal] Codex final verification failed.", file=sys.stderr)
         for problem in final_problems:
@@ -669,6 +1091,7 @@ if PHASE == "preflight":
     state = validate_common(allow_missing_binary=True)
     print(f"[info] preflight config state: {state['config']}")
     print(f"[info] preflight model cache state: {state['cache']}")
+    print(f"[info] preflight app-server daemon: {state['daemon']}")
 elif PHASE == "commit":
     commit()
 else:
@@ -715,12 +1138,12 @@ case "$VER_LINE" in
 esac
 info "codex --version: $VER_LINE"
 
-section "(c) enforce exact Codex config, PATH, cache, and release tree"
+section "(c) enforce exact Codex config, PATH, cache, release tree, and app-server daemon"
 
 codex_state_guard commit
 
 section "success - Codex CLI installed and configured"
 info "Open a NEW shell (or run 'source ~/.bashrc') so PATH updates take effect."
 info "Run 'codex' and verify active state with /status."
-info "Pinned Codex CLI release: $CODEX_CLI_VERSION."
+info "Pinned Codex release: $CODEX_CLI_VERSION (standalone CLI, and Codex's app-server daemon when it exists)."
 info "Managed default: model=gpt-6.2-sol, approval_policy=never, sandbox_mode=danger-full-access."

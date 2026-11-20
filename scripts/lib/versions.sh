@@ -103,11 +103,25 @@ TEAMVIEWER_DEB_SHA256=f3130d24edbe259ef5ba46a543c6d5a823aea2a14f533834f2e484bfdc
 # (--release is a documented flag of that installer; it also honours
 # CODEX_NON_INTERACTIVE=1.)
 #
+# One release for two packages. Codex also runs a local app-server daemon (the
+# process the VS Code Codex extension talks to) that is a separate, separately
+# versioned package under ~/.codex/packages/app-server-daemon; the standalone
+# installer above never touches it, and an old one (0.159.0) could not serve
+# gpt-6.2-sol on a ChatGPT sign-in. 00_install_codex_cli.sh therefore also runs
+# Codex's own `codex app-server daemon update --from-cli --yes` ("Copy and pin
+# this CLI package"), which makes the daemon exactly this release and pins it
+# against Codex's automatic updates. Plain `daemon update` is NOT used: it
+# ignores CODEX_RELEASE and installs whatever "latest" is.
+#
 # Keep this as an exact release pin. Before changing it, install and exercise the
 # candidate release, run `codex --version` and `codex doctor`, complete a model
-# turn, and confirm the installer's final managed-state check passes on a re-run.
+# turn, run `codex app-server daemon version` (managedCodexVersion and
+# appServerVersion must both equal the new pin), and confirm the installer's final
+# managed-state check passes on a re-run.
 #
-# Codex can self-update in place, so the live release tree may drift past this
-# pin. 00_install_codex_cli.sh prunes every non-pinned release directory and
-# re-asserts this exact version whenever it runs.
-CODEX_CLI_VERSION=0.170.0
+# Codex can self-update in place, so the live release trees may drift past this
+# pin. 00_install_codex_cli.sh prunes every non-pinned release directory of both
+# packages and re-asserts this exact version whenever it runs. A daemon NEWER
+# than this pin (for example after a hand-run `codex app-server daemon update`)
+# makes the next run refuse, never downgrade: bump this pin, then re-run.
+CODEX_CLI_VERSION=0.171.0
